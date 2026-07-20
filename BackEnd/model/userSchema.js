@@ -70,7 +70,7 @@ const userSchema = new mongoose.Schema(
       default: true
     },
 
-    isVerified: {
+    verify: {
       type: Boolean,
       default: false
     },

@@ -1,36 +1,69 @@
 require("dotenv").config();
+
 const express = require("express");
+const cors = require("cors");
 const connectDb = require("./config/connectDb");
-const userRoutes = require("./router/userRouter");
-const doctorRouter = require("./router/doctorRouter");
-const patientRouter = require("./router/patientRouter");
-const appointmentRouter = require("./router/appointmentRouter");
-const medicalrecordRouter = require("./router/medicalrecordRouter");
 
 const app = express();
+
+// ======================
+// Middleware
+// ======================
+
+app.use(
+  cors({
+    origin: "http://localhost:5173", 
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 
-const PORT = process.env.PORT || 3000;
+// ======================
+// Port
+// ======================
+
+const PORT = process.env.PORT || 4000;
+
+
+// ======================
+// Test Route
+// ======================
 
 app.get("/", (req, res) => {
-  return res.status(200).json({ message: "Server connected Succesfully" });
+  return res.status(200).json({
+    message: "Server connected Successfully",
+  });
 });
 
 
-app.use("/api/users", require("./router/userRouter"));
+// ======================
+// Routes
+// ======================
+
+app.use("/api/user", require("./router/userRouter"));
 
 app.use("/api/doctors", require("./router/doctorRouter"));
 
 app.use("/api/patients", require("./router/patientRouter"));
 
-app.use("/api/appointments", require("./router/appointmentRouter"));
+app.use(
+  "/api/appointments",
+  require("./router/appointmentRouter")
+);
 
-app.use("/api/medical-records", require("./router/medicalrecordRouter"));
+app.use(
+  "/api/medical-records",
+  require("./router/medicalrecordRouter")
+);
 
 
+// ======================
+// Start Server
+// ======================
 
 app.listen(PORT, () => {
-    console.log(`Server Started ${PORT}`);
-    connectDb();
+  console.log(`Server Started on port ${PORT}`);
+  connectDb();
 });

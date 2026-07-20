@@ -22,87 +22,37 @@ const medicalRecordSchema = new mongoose.Schema(
     diagnosis: {
       type: String,
       required: true,
-      trim: true,
     },
 
     symptoms: [
       {
         type: String,
-        trim: true,
       },
     ],
 
-    vitalSigns: {
-      temperature: {
-        type: Number,
-      },
-
-      bloodPressure: {
-        type: String,
-      },
-
-      heartRate: {
-        type: Number,
-      },
-
-      respiratoryRate: {
-        type: Number,
-      },
-
-      oxygenLevel: {
-        type: Number,
-      },
-    },
-
     prescription: [
       {
-        medicineName: {
+        medicine: {
           type: String,
-          required: true,
         },
 
         dosage: {
           type: String,
         },
 
-        frequency: {
-          type: String,
-        },
-
         duration: {
           type: String,
         },
-
-        instructions: {
-          type: String,
-        },
       },
     ],
 
-    labReports: [
+    testReports: [
       {
-        testName: {
-          type: String,
-        },
-
-        result: {
-          type: String,
-        },
-
-        reportFile: {
-          type: String,
-        },
-
-        testDate: {
-          type: Date,
-          default: Date.now,
-        },
+        testName: String,
+        result: String,
+        reportFile: String,
       },
     ],
-
-    treatmentPlan: {
-      type: String,
-    },
 
     doctorNotes: {
       type: String,
@@ -111,18 +61,10 @@ const medicalRecordSchema = new mongoose.Schema(
     followUpDate: {
       type: Date,
     },
-
-    status: {
-      type: String,
-      enum: ["active", "completed", "follow_up"],
-      default: "active",
-    },
   },
   {
     timestamps: true,
   },
 );
 
-module.exports =
-  mongoose.models.MedicalRecord ||
-  mongoose.model("MedicalRecord", medicalRecordSchema);
+module.exports = mongoose.model("MedicalRecord", medicalRecordSchema);

@@ -1,4 +1,4 @@
-const { verifyJWT } = require("../utils/generateTokens");
+const { verifyToken } = require("../utils/generateTokens");
 
 const verifyUser = async (req, res, next) => {
   try {
@@ -13,7 +13,7 @@ const verifyUser = async (req, res, next) => {
 
     const token = authHeader.split(" ")[1];
 
-    const decoded = await verifyJWT(token);
+    const decoded = await verifyToken(token);
 
     if (!decoded) {
       return res.status(401).json({
@@ -22,7 +22,7 @@ const verifyUser = async (req, res, next) => {
       });
     }
 
-    // store the full decoded payload, not just the id
+    
     req.user = decoded; 
     next();
     

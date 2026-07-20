@@ -1,0 +1,71 @@
+import {
+  HeartPulse,
+  Baby,
+  Bone,
+  Brain,
+  Stethoscope,
+  Eye,
+  Syringe,
+  Activity,
+} from "lucide-react";
+
+export const departments = [
+  {
+    name: "Cardiology",
+    desc: "Comprehensive heart care from diagnostics to advanced surgical intervention.",
+    icon: HeartPulse,
+    specialists: 14,
+    availability: "24/7 Emergency",
+    featured: true,
+    stat: { label: "Success rate", value: "98.2%" },
+  },
+  {
+    name: "Pediatrics",
+    desc: "Gentle, attentive care for infants, children, and adolescents.",
+    icon: Baby,
+    specialists: 9,
+    availability: "Mon – Sat, 8am–8pm",
+  },
+  {
+    name: "Orthopedics",
+    desc: "Treatment for bones, joints, and muscles, from sports injuries to replacements.",
+    icon: Bone,
+    specialists: 11,
+    availability: "Mon – Fri, 9am–6pm",
+  },
+  {
+    name: "Neurology",
+    desc: "Diagnosis and treatment of disorders affecting the brain and nervous system.",
+    icon: Brain,
+    specialists: 8,
+    availability: "24/7 On-call",
+  },
+  {
+    name: "General Medicine",
+    desc: "Everyday health concerns, checkups, and chronic condition management.",
+    icon: Stethoscope,
+    specialists: 16,
+    availability: "Daily, 7am–9pm",
+  },
+  {
+    name: "Ophthalmology",
+    desc: "Complete eye care, from routine exams to advanced surgical procedures.",
+    icon: Eye,
+    specialists: 6,
+    availability: "Mon – Sat, 9am–5pm",
+  },
+  {
+    name: "Immunology",
+    desc: "Care for immune disorders, allergies, and vaccination programs.",
+    icon: Syringe,
+    specialists: 5,
+    availability: "Mon – Fri, 9am–4pm",
+  },
+  {
+    name: "Emergency & Trauma",
+    desc: "Round-the-clock critical care for urgent and life-threatening conditions.",
+    icon: Activity,
+    specialists: 12,
+    availability: "24/7 Emergency",
+  },
+];
