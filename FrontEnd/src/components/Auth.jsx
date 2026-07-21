@@ -113,7 +113,7 @@ const Auth = ({ type = "signin", onSubmit }) => {
       if (isSignup) {
         navigate("/signin");
       } else {
-        navigate("/");
+        await redirectAfterLogin(res.data.user);
       }
     } catch (err) {
       console.log(err);
@@ -126,6 +126,30 @@ const Auth = ({ type = "signin", onSubmit }) => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Doctors need a completed Doctor profile (department, specialization,
+  // availability, etc.) before patients can find/book them. If they don't
+  // have one yet, send them to the setup page instead of the homepage.
+  const redirectAfterLogin = async (user) => {
+    if (user?.role !== "doctor") {
+      navigate("/");
+      return;
+    }
+
+    try {
+      const profileRes = await api.get("/doctors/my-profile");
+      if (!profileRes.data?.doctor) {
+        navigate("/doctor/complete-profile");
+      } else {
+        navigate("/");
+      }
+    } catch (err) {
+      // If the check itself fails, don't block login — just go home.
+      // The doctor can be prompted again next time.
+      console.log("Could not check doctor profile status:", err);
+      navigate("/");
     }
   };
 
@@ -213,7 +237,7 @@ const Auth = ({ type = "signin", onSubmit }) => {
               className="float-card rounded-2xl p-4 shadow-2xl"
               style={{ background: COLOR.white, maxWidth: "260px" }}
             >
-              <div className="flex items-center gap-2 mb-2.5">
+              <div className="flex items-center gap-2.5 mb-2.5">
                 <div
                   className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
                   style={{ background: COLOR.sageLight }}

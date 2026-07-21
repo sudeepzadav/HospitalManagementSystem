@@ -14,11 +14,10 @@ const {
   matchDepartmentRoute,
 } = require("../controller/appointmentController");
 
-// Match a free-text problem description to a real department
-// e.g. POST /api/appointments/match-department  { problem: "chest pain" }
-router.post("/match-department", verifyUser, matchDepartmentRoute);
+// Match a free-text symptom description to a real department (optional, used if not done client-side)
+router.post("/match-department", matchDepartmentRoute);
 
-// Get queue status (count + next token number) for a doctor on a given date
+// Get queue status for a doctor on a given date (booked count / capacity / next token / weekday availability)
 // e.g. GET /api/appointments/queue-status?doctorId=...&date=2026-07-22
 router.get("/queue-status", verifyUser, getQueueStatus);
 

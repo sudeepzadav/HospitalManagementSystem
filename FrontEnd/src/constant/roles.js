@@ -7,5 +7,4 @@ export const ROLE_OPTIONS = [
   { value: "lab_technician", label: "Lab technician" },
   { value: "accountant", label: "Accountant" },
   { value: "staff", label: "Staff" },
-  { value: "admin", label: "Admin" },
 ];

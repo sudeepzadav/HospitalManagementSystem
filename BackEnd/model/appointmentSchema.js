@@ -5,90 +5,86 @@ const appointmentSchema = new mongoose.Schema(
     patientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
-      required: true,
+      required: true
     },
 
     doctorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Doctor",
-      required: true,
+      required: true
     },
 
     department: {
       type: String,
-      required: true,
+      required: true
+    },
+
+    // Who the appointment is actually for — may differ from the logged-in
+    // account holder (e.g. booking for a spouse, child, or parent).
+    patientDetails: {
+      name: {
+        type: String,
+        required: true
+      },
+      age: {
+        type: Number,
+        required: true
+      },
+      gender: {
+        type: String,
+        enum: ["male", "female", "other"],
+        required: true
+      }
     },
 
     date: {
       type: Date,
-      required: true,
+      required: true
     },
 
-    // Replaces the old `timeSlot`. Patients don't pick a time — they get the
-    // next available number in that doctor's queue for the day.
     tokenNumber: {
       type: Number,
-      required: true,
-    },
-    
-    problem: {
-      type: String,
+      required: true
     },
 
     reason: {
-      type: String,
+      type: String
     },
 
     status: {
       type: String,
       enum: ["pending", "confirmed", "completed", "cancelled", "no_show"],
-      default: "pending",
+      default: "pending"
     },
 
     bookedVia: {
       type: String,
       enum: ["dashboard", "chatbot", "patient_portal"],
-      default: "dashboard",
+      default: "dashboard"
     },
 
     consultationFee: {
       type: Number,
-      default: 0,
+      default: 0
     },
 
     cancellationReason: {
-      type: String,
+      type: String
     },
 
     notes: {
-      type: String,
-    },
+      type: String
+    }
   },
   {
-    timestamps: true,
-  },
+    timestamps: true
+  }
 );
 
-// Normalize `date` to midnight so "how many appointments does this doctor
-// have today" and the uniqueness check below both operate on the same
-// calendar day, regardless of what time-of-day was passed in.
-appointmentSchema.pre("save", function (next) {
-  if (this.date) {
-    const d = new Date(this.date);
-    d.setHours(0, 0, 0, 0);
-    this.date = d;
-  }
-  next();
-});
-
-// Prevent two active appointments from claiming the same token number
-// for the same doctor on the same day.
+// Prevent two active appointments from getting the same token number for the same doctor + day
 appointmentSchema.index(
   { doctorId: 1, date: 1, tokenNumber: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { status: { $in: ["pending", "confirmed"] } },
-  },
+  { unique: true, partialFilterExpression: { status: { $in: ["pending", "confirmed"] } } }
 );
 
 module.exports = mongoose.model("Appointment", appointmentSchema);

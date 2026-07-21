@@ -11,13 +11,16 @@ import Appointment from "./pages/Appointment";
 import AiChatboat from "./components/AiChatboat";
 import Auth from "./components/Auth";
 import VerifyEmail from "./pages/verifyEmail";
+import DoctorsProfile from "./pages/DoctorsProfile";
 
 const App = () => {
   const location = useLocation();
 
-  const hideNavbarAndFooter = ["/signin", "/signup"].includes(
-    location.pathname,
-  );
+  const hideNavbarAndFooter = [
+    "/signin",
+    "/signup",
+    "/doctor/complete-profile",
+  ].includes(location.pathname);
 
   return (
     <div>
@@ -37,6 +40,7 @@ const App = () => {
         <Route path="/signin" element={<Auth type="signin" />} />
         <Route path="/signup" element={<Auth type="signup" />} />
         <Route path="/verify-email/:token" element={<VerifyEmail />} />
+        <Route path="/doctor/complete-profile" element={<DoctorsProfile />} />
       </Routes>
 
       {!hideNavbarAndFooter && (

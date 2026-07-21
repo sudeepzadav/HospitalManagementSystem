@@ -3,32 +3,40 @@ const Doctor = require("../model/doctorSchema");
 const Patient = require("../model/patientSchema");
 const errorHandler = require("../utils/errorHandler");
 
-const MAX_TOKENS_PER_DAY = 20;
+const DAILY_CAP_PER_DOCTOR = 20;
+
+function startOfDay(dateInput) {
+  const d = new Date(dateInput);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfDay(dateInput) {
+  const d = new Date(dateInput);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
 
 // ======================
-// Symptom -> Department keyword map
-// Add/expand freely as you notice gaps. Matching is case-insensitive and
-// looks for whole keywords anywhere in the patient's text.
+// Symptom -> Department keyword map (used by matchDepartmentRoute, optional
+// server-side matching endpoint — the chatbot may instead do this client-side)
 // ======================
 const DEPARTMENT_KEYWORDS = {
   Cardiology: ["chest", "heart", "palpitation", "bp", "blood pressure"],
-  Dermatology: ["skin", "rash", "itch", "itchy", "acne", "eczema"],
-  Neurology: ["headache", "migraine", "seizure", "dizzy", "dizziness", "numbness"],
-  Orthopedics: ["bone", "joint", "fracture", "back pain", "knee", "shoulder", "sprain"],
-  ENT: ["ear", "nose", "throat", "sinus", "hearing"],
-  Gastroenterology: ["stomach", "abdomen", "abdominal", "vomit", "diarrhea", "acidity", "nausea"],
   Pediatrics: ["child", "baby", "infant", "toddler"],
-  Gynecology: ["pregnancy", "pregnant", "menstrual", "period"],
+  Orthopedics: ["bone", "joint", "fracture", "back pain", "knee", "shoulder", "sprain"],
+  Neurology: ["headache", "migraine", "seizure", "dizzy", "dizziness", "numbness"],
   Ophthalmology: ["eye", "vision", "blurry"],
-  Psychiatry: ["anxiety", "depression", "stress", "insomnia", "sleep"],
-  General: ["fever", "cold", "cough", "fatigue", "flu"],
+  Immunology: ["allergy", "allergies", "allergic", "hives", "vaccine", "vaccination", "immune"],
+  "Emergency & Trauma": ["emergency", "accident", "trauma", "unconscious", "severe bleeding", "severe injury"],
+  "General Medicine": [
+    "fever", "cold", "cough", "fatigue", "flu",
+    "stomach", "abdomen", "abdominal", "nausea", "vomit", "diarrhea",
+    "skin", "rash", "itch", "itchy", "acne", "eczema",
+    "throat", "sore throat", "ear", "sinus",
+  ],
 };
 
-// ======================
-// Helper: match free-text problem description to a department that
-// actually exists in this hospital's Doctor collection. Returns null if
-// nothing matches (caller should fall back to showing all departments).
-// ======================
 function matchDepartment(problemText, availableDepartments = []) {
   if (!problemText) return null;
   const text = problemText.toLowerCase();
@@ -37,7 +45,6 @@ function matchDepartment(problemText, availableDepartments = []) {
   for (const [dept, keywords] of Object.entries(DEPARTMENT_KEYWORDS)) {
     if (!availableSet.has(dept.toLowerCase())) continue; // only suggest depts that exist in DB
     if (keywords.some((kw) => text.includes(kw))) {
-      // Return the department's actual casing as stored in availableDepartments
       return availableDepartments.find((d) => d.toLowerCase() === dept.toLowerCase());
     }
   }
@@ -53,39 +60,40 @@ function isDoctorAvailableOnDate(doctor, dateObj) {
 }
 
 // ======================
-// Helper: current queue status for a doctor on a given day
+// Helper: how many active appointments a doctor has on a given date,
+// plus whether the doctor even works that weekday at all.
 // ======================
 async function getQueueStatusForDoctor(doctorId, dateString) {
   const doctor = await Doctor.findById(doctorId);
   if (!doctor) return { error: "Doctor not found" };
 
-  const date = new Date(dateString);
-  date.setHours(0, 0, 0, 0);
+  const dateObj = startOfDay(dateString);
 
-  if (!isDoctorAvailableOnDate(doctor, date)) {
-    const dayName = date.toLocaleDateString("en-US", { weekday: "long" });
+  if (!isDoctorAvailableOnDate(doctor, dateObj)) {
+    const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" });
     return {
       dayAvailable: false,
+      full: true, // treat as unbookable so callers relying on `full` still behave correctly
       message: `This doctor is not available on ${dayName}s.`,
+      capacity: DAILY_CAP_PER_DOCTOR,
+      bookedCount: 0,
+      nextToken: 1,
     };
   }
 
-  const startOfDay = new Date(date);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-
-  const count = await Appointment.countDocuments({
+  const bookedCount = await Appointment.countDocuments({
     doctorId,
-    date: { $gte: startOfDay, $lte: endOfDay },
+    date: { $gte: startOfDay(dateString), $lte: endOfDay(dateString) },
     status: { $in: ["pending", "confirmed"] },
   });
 
   return {
     dayAvailable: true,
-    count,
-    nextToken: count + 1,
-    maxPerDay: MAX_TOKENS_PER_DAY,
-    isFull: count >= MAX_TOKENS_PER_DAY,
+    capacity: DAILY_CAP_PER_DOCTOR,
+    bookedCount,
+    available: Math.max(DAILY_CAP_PER_DOCTOR - bookedCount, 0),
+    nextToken: bookedCount + 1,
+    full: bookedCount >= DAILY_CAP_PER_DOCTOR,
   };
 }
 
@@ -101,69 +109,81 @@ async function getOrCreatePatientForUser(userId) {
 }
 
 // ======================
-// Core: assign the next token number and create the appointment.
-// Shared by both the dashboard route (explicit patientId) and the
-// self-book route (patientId resolved from the logged-in user).
-// Retries a few times if two requests race for the same token number.
+// Core booking logic — used by the dashboard route, the self-book route,
+// and the payment controller (once eSewa payment is verified).
+// Assigns the next token number, checks weekday availability + daily cap,
+// and retries on rare token-collision races.
 // ======================
-async function assignTokenAndCreate({ patientId, doctorId, department, date, problem, reason, bookedVia }) {
+async function bookAppointment(
+  { userId, patientId, doctorId, department, date, reason, bookedVia, patientDetails },
+  attempt = 0
+) {
   const doctor = await Doctor.findById(doctorId);
   if (!doctor) {
     return { success: false, message: "Doctor not found" };
   }
 
-  const dateObj = new Date(date);
-  dateObj.setHours(0, 0, 0, 0);
+  if (!patientDetails || !patientDetails.name || !patientDetails.age || !patientDetails.gender) {
+    return { success: false, message: "Patient name, age, and gender are required" };
+  }
+
+  const dateObj = startOfDay(date);
 
   if (!isDoctorAvailableOnDate(doctor, dateObj)) {
     const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" });
     return { success: false, message: `Doctor is not available on ${dayName}s` };
   }
 
-  const startOfDay = new Date(dateObj);
-  const endOfDay = new Date(dateObj);
-  endOfDay.setHours(23, 59, 59, 999);
-
-  const MAX_ATTEMPTS = 3;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const count = await Appointment.countDocuments({
-      doctorId,
-      date: { $gte: startOfDay, $lte: endOfDay },
-      status: { $in: ["pending", "confirmed"] },
-    });
-
-    if (count >= MAX_TOKENS_PER_DAY) {
-      return { success: false, message: "This doctor is fully booked for that day (20/20). Please pick another date or doctor." };
-    }
-
-    try {
-      const appointment = await Appointment.create({
-        patientId,
-        doctorId,
-        department: department || doctor.department,
-        date: dateObj,
-        tokenNumber: count + 1,
-        problem,
-        reason,
-        status: "pending",
-        bookedVia: bookedVia || "dashboard",
-        consultationFee: doctor.consultationFee,
-      });
-
-      return { success: true, appointment };
-    } catch (error) {
-      // Someone else grabbed that token number in the same instant — retry
-      if (error.code === 11000 && attempt < MAX_ATTEMPTS - 1) {
-        continue;
-      }
-      if (error.code === 11000) {
-        return { success: false, message: "That slot was just taken, please try again." };
-      }
-      return { success: false, message: error.message };
-    }
+  const resolvedPatientId =
+    patientId || (userId ? (await getOrCreatePatientForUser(userId))._id : null);
+  if (!resolvedPatientId) {
+    return { success: false, message: "Patient could not be resolved" };
   }
 
-  return { success: false, message: "Could not book at this time, please try again." };
+  const bookedCount = await Appointment.countDocuments({
+    doctorId,
+    date: { $gte: startOfDay(date), $lte: endOfDay(date) },
+    status: { $in: ["pending", "confirmed"] },
+  });
+
+  if (bookedCount >= DAILY_CAP_PER_DOCTOR) {
+    return {
+      success: false,
+      message: `This doctor is fully booked for that day (${DAILY_CAP_PER_DOCTOR}/${DAILY_CAP_PER_DOCTOR}). Please choose another date.`,
+      full: true,
+    };
+  }
+
+  const tokenNumber = bookedCount + 1;
+
+  try {
+    const appointment = await Appointment.create({
+      patientId: resolvedPatientId,
+      doctorId,
+      department: department || doctor.department,
+      patientDetails,
+      date: dateObj,
+      tokenNumber,
+      reason,
+      status: "pending",
+      bookedVia: bookedVia || "dashboard",
+      consultationFee: doctor.consultationFee,
+    });
+
+    return { success: true, appointment };
+  } catch (error) {
+    // Token collision (rare race condition) — retry with a fresh count
+    if (error.code === 11000 && attempt < 2) {
+      return bookAppointment(
+        { userId, patientId, doctorId, department, date, reason, bookedVia, patientDetails },
+        attempt + 1
+      );
+    }
+    if (error.code === 11000) {
+      return { success: false, message: "Please try booking again — that slot was just taken." };
+    }
+    return { success: false, message: error.message };
+  }
 }
 
 // ======================
@@ -171,7 +191,7 @@ async function assignTokenAndCreate({ patientId, doctorId, department, date, pro
 // ======================
 const createAppointment = async (req, res) => {
   try {
-    const { patientId, doctorId, department, date, problem, reason } = req.body;
+    const { patientId, doctorId, department, date, reason, patientDetails } = req.body;
 
     if (!patientId || !doctorId || !date) {
       return res.status(400).json({
@@ -180,13 +200,13 @@ const createAppointment = async (req, res) => {
       });
     }
 
-    const result = await assignTokenAndCreate({
+    const result = await bookAppointment({
       patientId,
       doctorId,
       department,
       date,
-      problem,
       reason,
+      patientDetails,
       bookedVia: "dashboard",
     });
 
@@ -201,11 +221,11 @@ const createAppointment = async (req, res) => {
 };
 
 // ======================
-// Route: Self-book (patient books for themselves, e.g. via chatbot)
+// Route: Self-book (patient books for themselves or a family member, via chatbot)
 // ======================
 const selfBookAppointment = async (req, res) => {
   try {
-    const { doctorId, department, date, problem, reason } = req.body;
+    const { doctorId, department, date, reason, patientDetails } = req.body;
 
     if (!doctorId || !date) {
       return res.status(400).json({
@@ -214,15 +234,13 @@ const selfBookAppointment = async (req, res) => {
       });
     }
 
-    const patient = await getOrCreatePatientForUser(req.user.id);
-
-    const result = await assignTokenAndCreate({
-      patientId: patient._id,
+    const result = await bookAppointment({
+      userId: req.user.id,
       doctorId,
       department,
       date,
-      problem,
       reason,
+      patientDetails,
       bookedVia: "chatbot",
     });
 
@@ -248,11 +266,7 @@ const getAppointments = async (req, res) => {
     if (patientId) filter.patientId = patientId;
     if (status) filter.status = status;
     if (date) {
-      const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(date);
-      end.setHours(23, 59, 59, 999);
-      filter.date = { $gte: start, $lte: end };
+      filter.date = { $gte: startOfDay(date), $lte: endOfDay(date) };
     }
 
     const appointments = await Appointment.find(filter)
@@ -335,7 +349,7 @@ const deleteAppointment = async (req, res) => {
 
 // ======================
 // Route: Get Queue Status for a Doctor on a Date
-// (replaces the old getAvailableSlots — no time slots anymore, just a count)
+// (booked count / capacity / next token / weekday availability)
 // ======================
 const getQueueStatus = async (req, res) => {
   try {
@@ -359,13 +373,12 @@ const getQueueStatus = async (req, res) => {
 
 // ======================
 // Route: Match a free-text problem description to a real department
+// (optional — only needed if the frontend calls this instead of matching client-side)
 // ======================
 const matchDepartmentRoute = async (req, res) => {
   try {
     const { problem } = req.body;
-
     const departments = await Doctor.distinct("department");
-
     const matched = matchDepartment(problem, departments);
 
     res.status(200).json({
@@ -387,9 +400,10 @@ module.exports = {
   deleteAppointment,
   getQueueStatus,
   matchDepartmentRoute,
-  // exported for reuse elsewhere (not HTTP routes)
-  assignTokenAndCreate,
+  // exported for reuse elsewhere (paymentController, etc. — not HTTP routes)
+  bookAppointment,
   getQueueStatusForDoctor,
   getOrCreatePatientForUser,
   matchDepartment,
+  DAILY_CAP_PER_DOCTOR,
 };
