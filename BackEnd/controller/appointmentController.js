@@ -53,10 +53,71 @@ function matchDepartment(problemText, availableDepartments = []) {
 
 // ======================
 // Helper: does this doctor work on the given date's weekday?
+//
+// HARDENED + LOGGED: previously this only matched a.day against the full
+// weekday name ("Monday"), which fails silently (bookAppointment just
+// returns "Doctor is not available on <Day>s") if a doctor's availability
+// is stored as abbreviations ("Mon"), lowercase, numbers (0-6), or under a
+// different field name entirely (e.g. "dayOfWeek" instead of "day"). If
+// EVERY booking is failing, this is the most likely cause. The console.log
+// below will print the exact shape of doctor.availability so we can see
+// which case it is.
 // ======================
+const WEEKDAY_ALIASES = {
+  sunday: ["sunday", "sun", "0"],
+  monday: ["monday", "mon", "1"],
+  tuesday: ["tuesday", "tue", "tues", "2"],
+  wednesday: ["wednesday", "wed", "3"],
+  thursday: ["thursday", "thu", "thur", "thurs", "4"],
+  friday: ["friday", "fri", "5"],
+  saturday: ["saturday", "sat", "6"],
+};
+
 function isDoctorAvailableOnDate(doctor, dateObj) {
-  const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" });
-  return doctor.availability.some((a) => a.day.toLowerCase() === dayName.toLowerCase());
+  const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" }); // e.g. "Monday"
+  const dayNameLower = dayName.toLowerCase();
+  const aliases = WEEKDAY_ALIASES[dayNameLower] || [dayNameLower];
+
+  if (!Array.isArray(doctor.availability) || doctor.availability.length === 0) {
+    console.error(
+      `[availability] Doctor ${doctor._id} has no/invalid availability array:`,
+      doctor.availability
+    );
+    return false;
+  }
+
+  const match = doctor.availability.some((a) => {
+    // Support either `a.day` or a differently-named field, and any casing/abbreviation.
+    const rawValue = a && (a.day ?? a.dayOfWeek ?? a.weekday);
+    if (rawValue === undefined || rawValue === null) return false;
+    const normalized = String(rawValue).trim().toLowerCase();
+    return aliases.includes(normalized);
+  });
+
+  if (!match) {
+    console.error(
+      `[availability] No match for ${dayName} (doctor ${doctor._id}). ` +
+        `Raw availability entries:`,
+      JSON.stringify(doctor.availability)
+    );
+  }
+
+  return match;
+}
+
+// ======================
+// Helper: are patientDetails actually complete?
+// IMPORTANT: age must be checked against undefined/null/"" rather than a
+// plain falsy check — `age: 0` (e.g. booking for a newborn) is a valid
+// value but is falsy in JS, so `!patientDetails.age` would wrongly treat
+// it as "missing" and silently reject the booking after payment was
+// already taken.
+// ======================
+function hasCompletePatientDetails(patientDetails) {
+  if (!patientDetails) return false;
+  const { name, age, gender } = patientDetails;
+  const ageIsValid = age !== undefined && age !== null && age !== "";
+  return Boolean(name) && ageIsValid && Boolean(gender);
 }
 
 // ======================
@@ -113,6 +174,10 @@ async function getOrCreatePatientForUser(userId) {
 // and the payment controller (once eSewa payment is verified).
 // Assigns the next token number, checks weekday availability + daily cap,
 // and retries on rare token-collision races.
+//
+// LOGGED: every failure path now console.errors the reason + key inputs
+// before returning, so server logs show exactly why a booking failed
+// instead of that information only living in payment.bookingFailureReason.
 // ======================
 async function bookAppointment(
   { userId, patientId, doctorId, department, date, reason, bookedVia, patientDetails },
@@ -120,10 +185,15 @@ async function bookAppointment(
 ) {
   const doctor = await Doctor.findById(doctorId);
   if (!doctor) {
+    console.error(`[bookAppointment] Doctor not found for doctorId=${doctorId}`);
     return { success: false, message: "Doctor not found" };
   }
 
-  if (!patientDetails || !patientDetails.name || !patientDetails.age || !patientDetails.gender) {
+  if (!hasCompletePatientDetails(patientDetails)) {
+    console.error(
+      `[bookAppointment] Incomplete patientDetails:`,
+      JSON.stringify(patientDetails)
+    );
     return { success: false, message: "Patient name, age, and gender are required" };
   }
 
@@ -131,12 +201,19 @@ async function bookAppointment(
 
   if (!isDoctorAvailableOnDate(doctor, dateObj)) {
     const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" });
+    console.error(
+      `[bookAppointment] Doctor ${doctorId} not available on ${dayName}. ` +
+        `doctor.availability=${JSON.stringify(doctor.availability)}`
+    );
     return { success: false, message: `Doctor is not available on ${dayName}s` };
   }
 
   const resolvedPatientId =
     patientId || (userId ? (await getOrCreatePatientForUser(userId))._id : null);
   if (!resolvedPatientId) {
+    console.error(
+      `[bookAppointment] Could not resolve patient. patientId=${patientId} userId=${userId}`
+    );
     return { success: false, message: "Patient could not be resolved" };
   }
 
@@ -147,6 +224,9 @@ async function bookAppointment(
   });
 
   if (bookedCount >= DAILY_CAP_PER_DOCTOR) {
+    console.error(
+      `[bookAppointment] Doctor ${doctorId} fully booked for ${date}: ${bookedCount}/${DAILY_CAP_PER_DOCTOR}`
+    );
     return {
       success: false,
       message: `This doctor is fully booked for that day (${DAILY_CAP_PER_DOCTOR}/${DAILY_CAP_PER_DOCTOR}). Please choose another date.`,
@@ -172,6 +252,16 @@ async function bookAppointment(
 
     return { success: true, appointment };
   } catch (error) {
+    console.error(
+      `[bookAppointment] Appointment.create failed: ${error.message}. ` +
+        `Payload=${JSON.stringify({
+          patientId: resolvedPatientId,
+          doctorId,
+          department: department || doctor.department,
+          date: dateObj,
+          tokenNumber,
+        })}`
+    );
     // Token collision (rare race condition) — retry with a fresh count
     if (error.code === 11000 && attempt < 2) {
       return bookAppointment(
@@ -405,5 +495,6 @@ module.exports = {
   getQueueStatusForDoctor,
   getOrCreatePatientForUser,
   matchDepartment,
+  hasCompletePatientDetails,
   DAILY_CAP_PER_DOCTOR,
 };

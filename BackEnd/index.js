@@ -50,6 +50,8 @@ app.use("/api/patients", require("./router/patientRouter"));
 
 app.use("/api/payments", require("./router/paymentRouter"));
 
+app.use("/api/appointments", require("./router/appointmentPdfRouter"));
+
 app.use(
   "/api/appointments",
   require("./router/appointmentRouter")

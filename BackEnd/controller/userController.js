@@ -24,7 +24,7 @@ async function verifyEmail(req, res) {
       });
     }
 
-    const user = await User.findById(decoded.id); 
+     
 
     if (!user) {
       return res

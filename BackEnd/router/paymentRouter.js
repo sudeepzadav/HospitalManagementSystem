@@ -1,27 +1,16 @@
 const express = require("express");
 const router = express.Router();
-
+const {
+  initiateEsewaPayment,
+  verifyEsewaPayment,
+} = require("../controller/paymentController");
+// Adjust this path if verifyUser.js lives somewhere else.
 const verifyUser = require("../middleware/auth");
 
-const {
-  initiatePayment,
-  getPaymentForm,
-  esewaSuccess,
-  esewaFailure,
-  getPaymentStatus,
-} = require("../controller/paymentController");
-
-// Start a payment session for an upcoming appointment (requires login)
-router.post("/initiate", verifyUser, initiatePayment);
-
-// Get signed eSewa form fields — public, may be opened on a different device via QR
-router.get("/form/:transactionUuid", getPaymentForm);
-
-// eSewa redirects here after payment completes or fails
-router.get("/esewa/success", esewaSuccess);
-router.get("/esewa/failure", esewaFailure);
-
-// Poll payment status (used by the chatbot while waiting for the user to pay)
-router.get("/status/:transactionUuid", getPaymentStatus);
+// Mounted in index.js as: app.use("/api/payments", paymentRouter)
+// so these resolve to /api/payments/esewa/initiate and /api/payments/esewa/verify
+// — matching what Payment.jsx and PaymentSuccess.jsx already call.
+router.post("/esewa/initiate", verifyUser, initiateEsewaPayment);
+router.post("/esewa/verify", verifyUser, verifyEsewaPayment);
 
 module.exports = router;

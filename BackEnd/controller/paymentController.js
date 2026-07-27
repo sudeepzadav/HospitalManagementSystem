@@ -1,279 +1,255 @@
 const crypto = require("crypto");
 const Payment = require("../model/paymentSchema");
 const Doctor = require("../model/doctorSchema");
-const errorHandler = require("../utils/errorHandler");
-const {
-  bookAppointment,
-  getQueueStatusForDoctor,
-} = require("./appointmentController");
+const Appointment = require("../model/appointmentSchema");
+// Note: your Patient model file is named patientSchema.js, not Patient.js.
+const Patient = require("../model/patientSchema");
 
-const ESEWA_PRODUCT_CODE = process.env.ESEWA_PRODUCT_CODE || "EPAYTEST";
-const ESEWA_SECRET_KEY = process.env.ESEWA_SECRET_KEY || "8gBm/:&EnhH.1/q";
-const ESEWA_GATEWAY_URL = process.env.ESEWA_GATEWAY_URL || "https://rc-epay.esewa.com.np";
-const ESEWA_STATUS_URL =
-  process.env.ESEWA_STATUS_URL || "https://uat.esewa.com.np/api/epay/transaction/status";
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:4000";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+// ---- eSewa config, loaded from .env ----
+// Make sure your entry point calls require("dotenv").config() before this
+// file is loaded, so these are actually populated.
+const ESEWA_PRODUCT_CODE = process.env.ESEWA_PRODUCT_CODE;
+const ESEWA_SECRET_KEY = process.env.ESEWA_SECRET_KEY;
+const ESEWA_STATUS_CHECK_URL = process.env.ESEWA_STATUS_CHECK_URL;
 
-// ======================
-// Helper: HMAC-SHA256 signature per eSewa ePay v2 spec
-// ======================
-function generateSignature(totalAmount, transactionUuid, productCode, secretKey) {
+function signEsewaFields({ totalAmount, transactionUuid, productCode }) {
   const message = `total_amount=${totalAmount},transaction_uuid=${transactionUuid},product_code=${productCode}`;
-  return crypto.createHmac("sha256", secretKey).update(message).digest("base64");
+  return crypto
+    .createHmac("sha256", ESEWA_SECRET_KEY)
+    .update(message)
+    .digest("base64");
 }
 
-// Build the same message using whatever field order eSewa tells us it signed (signed_field_names)
-function generateSignatureFromFields(fields, signedFieldNames, secretKey) {
-  const names = signedFieldNames.split(",");
-  const message = names.map((name) => `${name}=${fields[name]}`).join(",");
-  return crypto.createHmac("sha256", secretKey).update(message).digest("base64");
+// eSewa's success callback signs a different (and longer) set of fields
+// than the initiate step — typically transaction_code, status,
+// total_amount, transaction_uuid, product_code, signed_field_names, in
+// that order. Rather than hardcoding that list, build the message from
+// whatever `signed_field_names` says, since that's the actual contract.
+function computeSignatureFromPayload(payload, signedFieldNames) {
+  const message = signedFieldNames
+    .split(",")
+    .map((field) => `${field}=${payload[field]}`)
+    .join(",");
+
+  return crypto
+    .createHmac("sha256", ESEWA_SECRET_KEY)
+    .update(message)
+    .digest("base64");
 }
 
-function timingSafeEqual(a, b) {
-  const bufA = Buffer.from(a || "");
-  const bufB = Buffer.from(b || "");
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+// Resolves the logged-in account + the specific person being booked for to
+// a Patient profile document. Each distinct name under this account gets
+// its own Patient record (so a parent, spouse, child, etc. each keep their
+// own medical history), while booking the same name again reuses the
+// existing record instead of duplicating it.
+async function getAuthenticatedPatientId(req, patientName) {
+  const userId = req.user?._id || req.user?.id;
+  if (!userId) {
+    throw new Error("Not authenticated.");
+  }
+
+  let patient = await Patient.findOne({ userId, name: patientName });
+  if (!patient) {
+    patient = await Patient.create({ userId, name: patientName });
+  }
+
+  return patient._id;
 }
 
-// ======================
-// Route: Initiate a payment for an upcoming appointment
-// ======================
-const initiatePayment = async (req, res) => {
+// Placeholder token-number logic: counts existing active appointments for
+// this doctor on this date and adds 1. Replace with whatever your booking
+// system already uses elsewhere (e.g. the same logic behind
+// /appointments/queue-status) so token numbers stay consistent.
+async function getNextTokenNumber(doctorId, date) {
+  const count = await Appointment.countDocuments({
+    doctorId,
+    date,
+    status: { $in: ["pending", "confirmed"] },
+  });
+  return count + 1;
+}
+
+// POST /api/payments/esewa/initiate
+async function initiateEsewaPayment(req, res) {
   try {
-    const { doctorId, department, date, reason, patientDetails } = req.body;
+    const { doctorId, department, date, patient, amount, reason } = req.body;
 
-    if (!doctorId || !date) {
-      return res.status(400).json({ success: false, message: "doctorId and date are required" });
+    if (!doctorId || !department || !date || !patient?.name || !amount) {
+      return res.status(400).json({ message: "Missing booking details." });
     }
 
-    if (!patientDetails || !patientDetails.name || !patientDetails.age || !patientDetails.gender) {
-      return res.status(400).json({
-        success: false,
-        message: "Patient name, age, and gender are required",
-      });
-    }
-
-    const doctor = await Doctor.findById(doctorId);
-    if (!doctor) {
-      return res.status(404).json({ success: false, message: "Doctor not found" });
-    }
-
-    // Re-check the daily cap before taking payment, so we don't charge for a day that's already full
-    const queue = await getQueueStatusForDoctor(doctorId, date);
-    if (queue.full) {
-      return res.status(409).json({
-        success: false,
-        message: `This doctor is fully booked for that day (${queue.bookedCount}/${queue.capacity}). Please choose another date.`,
-      });
-    }
+    const patientId = await getAuthenticatedPatientId(req, patient.name);
 
     const transactionUuid = crypto.randomUUID();
-    const amount = doctor.consultationFee || 0;
+    const totalAmount = Number(amount);
 
-    const payment = await Payment.create({
-      userId: req.user.id,
-      doctorId,
-      department,
-      date: new Date(date),
-      reason,
-      patientDetails,
-      amount,
+    const signature = signEsewaFields({
+      totalAmount,
       transactionUuid,
       productCode: ESEWA_PRODUCT_CODE,
-      status: "pending",
     });
 
-    return res.status(201).json({
-      success: true,
-      transactionUuid: payment.transactionUuid,
-      amount,
-      // This is what the QR code encodes — opens the auto-submitting payment page
-      paymentPageUrl: `${FRONTEND_URL}/pay/${payment.transactionUuid}`,
-    });
-  } catch (error) {
-    return errorHandler(res, error);
-  }
-};
-
-// ======================
-// Route: Get the signed form fields needed to redirect to eSewa
-// Public (no auth) — this page may be opened on a different device via QR scan
-// ======================
-const getPaymentForm = async (req, res) => {
-  try {
-    const { transactionUuid } = req.params;
-    const payment = await Payment.findOne({ transactionUuid });
-
-    if (!payment) {
-      return res.status(404).json({ success: false, message: "Payment session not found" });
-    }
-    if (payment.status !== "pending") {
-      return res.status(410).json({ success: false, message: `Payment already ${payment.status}` });
-    }
-
-    const totalAmount = payment.amount;
-    const signature = generateSignature(
-      totalAmount,
-      payment.transactionUuid,
-      payment.productCode,
-      ESEWA_SECRET_KEY
-    );
-
-    return res.status(200).json({
-      success: true,
-      formAction: `${ESEWA_GATEWAY_URL}/api/epay/main/v2/form`,
-      fields: {
-        amount: totalAmount,
-        tax_amount: 0,
-        total_amount: totalAmount,
-        transaction_uuid: payment.transactionUuid,
-        product_code: payment.productCode,
-        product_service_charge: 0,
-        product_delivery_charge: 0,
-        success_url: `${BACKEND_URL}/api/payments/esewa/success`,
-        failure_url: `${BACKEND_URL}/api/payments/esewa/failure`,
-        signed_field_names: "total_amount,transaction_uuid,product_code",
-        signature,
+    // Persist the pending payment so /verify can create the appointment
+    // itself, instead of trusting whatever the client sends back.
+    await Payment.create({
+      transactionUuid,
+      patientId,
+      doctorId,
+      department,
+      date,
+      reason,
+      patientDetails: {
+        name: patient.name,
+        age: patient.age,
+        gender: String(patient.gender).toLowerCase(),
       },
+      amount: totalAmount,
+      productCode: ESEWA_PRODUCT_CODE,
+      status: "PENDING",
     });
-  } catch (error) {
-    return errorHandler(res, error);
-  }
-};
 
-// ======================
-// Route: eSewa redirects here after a successful payment
-// ======================
-const esewaSuccess = async (req, res) => {
+    res.json({
+      transactionUuid,
+      amount: totalAmount,
+      taxAmount: 0,
+      totalAmount,
+      productCode: ESEWA_PRODUCT_CODE,
+      serviceCharge: 0,
+      deliveryCharge: 0,
+      signature,
+      signedFieldNames: "total_amount,transaction_uuid,product_code",
+    });
+  } catch (err) {
+    console.error("eSewa initiate error:", err);
+    res.status(500).json({ message: err.message || "Could not start payment." });
+  }
+}
+
+// POST /api/payments/esewa/verify
+async function verifyEsewaPayment(req, res) {
   try {
-    const { data } = req.query;
+    const { data } = req.body;
     if (!data) {
-      return res.redirect(`${FRONTEND_URL}/payment-result?status=failed`);
+      return res.status(400).json({ message: "Missing payment data." });
     }
 
+    // eSewa appends this as a base64-encoded JSON string to success_url.
     const decoded = JSON.parse(Buffer.from(data, "base64").toString("utf-8"));
-    const { transaction_uuid, total_amount, signed_field_names, signature, status } = decoded;
+    const {
+      transaction_uuid,
+      total_amount,
+      product_code,
+      status,
+      signature,
+      signed_field_names,
+      transaction_code,
+    } = decoded;
 
     const payment = await Payment.findOne({ transactionUuid: transaction_uuid });
     if (!payment) {
-      return res.redirect(`${FRONTEND_URL}/payment-result?status=failed`);
+      return res
+        .status(400)
+        .json({ message: "Unknown or expired transaction." });
     }
 
-    // Idempotent: if we've already processed this one, just send them to the result page
-    if (payment.status === "completed") {
-      return res.redirect(
-        `${FRONTEND_URL}/payment-result?status=success&transaction_uuid=${transaction_uuid}`
-      );
+    // If this was already verified (e.g. the user refreshed the success
+    // page), just return the existing appointment instead of redoing work.
+    if (payment.status === "COMPLETE" && payment.appointmentId) {
+      const existing = await Appointment.findById(payment.appointmentId);
+      return res.json({
+        appointmentId: existing._id,
+        tokenNumber: existing.tokenNumber,
+        doctorId: payment.doctorId,
+        date: payment.date,
+        patient: payment.patientDetails,
+      });
     }
 
-    // 1) Verify the signature eSewa sent us matches what we'd compute ourselves
-    const expectedSignature = generateSignatureFromFields(decoded, signed_field_names, ESEWA_SECRET_KEY);
-    const signatureValid = timingSafeEqual(signature, expectedSignature);
+    // Recompute the signature using eSewa's own signed_field_names so we
+    // build the message the same way eSewa did — don't trust the redirect
+    // payload blindly.
+    const expectedSignature = computeSignatureFromPayload(
+      decoded,
+      signed_field_names
+    );
 
-    // 2) Cross-check amount matches what we charged
-    const amountValid = Number(total_amount) === Number(payment.amount);
-
-    // 3) Defense in depth — ask eSewa's status API directly rather than trusting the redirect alone
-    let statusValid = false;
-    try {
-      const statusRes = await fetch(
-        `${ESEWA_STATUS_URL}?product_code=${payment.productCode}&total_amount=${payment.amount}&transaction_uuid=${payment.transactionUuid}`
-      );
-      const statusData = await statusRes.json();
-      statusValid = statusData.status === "COMPLETE";
-      payment.rawResponse = { redirect: decoded, statusCheck: statusData };
-    } catch (e) {
-      payment.rawResponse = { redirect: decoded, statusCheckError: e.message };
-    }
-
-    if (!(signatureValid && amountValid && statusValid && status === "COMPLETE")) {
-      payment.status = "failed";
+    if (expectedSignature !== signature) {
+      console.error("Signature mismatch debug:", {
+        signed_field_names,
+        decoded,
+        expectedSignature,
+        receivedSignature: signature,
+      });
+      payment.status = "FAILED";
       await payment.save();
-      return res.redirect(
-        `${FRONTEND_URL}/payment-result?status=failed&transaction_uuid=${transaction_uuid}`
-      );
+      return res.status(400).json({ message: "Signature mismatch." });
     }
 
-    // Payment verified — now actually book the appointment
-    const bookingResult = await bookAppointment({
-      userId: payment.userId,
+    if (status !== "COMPLETE") {
+      payment.status = "FAILED";
+      await payment.save();
+      return res
+        .status(400)
+        .json({ message: `Payment not complete (status: ${status}).` });
+    }
+
+    // Double-check directly with eSewa's status-check API before trusting
+    // the redirect at all — this is the step that actually confirms payment.
+    const statusUrl = `${ESEWA_STATUS_CHECK_URL}?product_code=${product_code}&total_amount=${total_amount}&transaction_uuid=${transaction_uuid}`;
+    const statusRes = await fetch(statusUrl);
+    const statusData = await statusRes.json();
+
+    if (statusData.status !== "COMPLETE") {
+      payment.status = "FAILED";
+      await payment.save();
+      return res
+        .status(400)
+        .json({ message: "eSewa did not confirm this payment." });
+    }
+
+    // Look up the doctor's display name for the confirmation screen.
+    let doctorName = "Doctor";
+    try {
+      const doctor = await Doctor.findById(payment.doctorId).populate(
+        "userId",
+        "name"
+      );
+      doctorName = doctor?.userId?.name || doctorName;
+    } catch (lookupErr) {
+      console.warn("Could not look up doctor name:", lookupErr.message);
+    }
+
+    // Create the actual appointment now that payment is confirmed.
+    const appointment = await Appointment.create({
+      patientId: payment.patientId,
       doctorId: payment.doctorId,
       department: payment.department,
+      patientDetails: payment.patientDetails,
       date: payment.date,
       reason: payment.reason,
-      patientDetails: payment.patientDetails,
-      bookedVia: "chatbot",
+      tokenNumber: await getNextTokenNumber(payment.doctorId, payment.date),
+      consultationFee: payment.amount,
+      status: "confirmed",
+      bookedVia: "patient_portal",
     });
 
-    payment.status = "completed";
-    payment.esewaRefId = decoded.transaction_code || decoded.ref_id || "";
-    if (bookingResult.success) {
-      payment.appointmentId = bookingResult.appointment._id;
-    }
+    payment.status = "COMPLETE";
+    payment.esewaRefId = transaction_code;
+    payment.appointmentId = appointment._id;
     await payment.save();
 
-    if (!bookingResult.success) {
-      // Payment succeeded but the slot filled up in the meantime (rare race) — flag for manual follow-up/refund
-      return res.redirect(
-        `${FRONTEND_URL}/payment-result?status=payment_ok_booking_failed&transaction_uuid=${transaction_uuid}`
-      );
-    }
-
-    return res.redirect(
-      `${FRONTEND_URL}/payment-result?status=success&transaction_uuid=${transaction_uuid}`
-    );
-  } catch (error) {
-    console.log("eSewa success handler error:", error.message);
-    return res.redirect(`${FRONTEND_URL}/payment-result?status=failed`);
-  }
-};
-
-// ======================
-// Route: eSewa redirects here after a failed/cancelled payment
-// ======================
-const esewaFailure = async (req, res) => {
-  try {
-    const { transaction_uuid } = req.query;
-    if (transaction_uuid) {
-      await Payment.findOneAndUpdate({ transactionUuid: transaction_uuid }, { status: "failed" });
-    }
-    return res.redirect(`${FRONTEND_URL}/payment-result?status=failed&transaction_uuid=${transaction_uuid || ""}`);
-  } catch (error) {
-    return res.redirect(`${FRONTEND_URL}/payment-result?status=failed`);
-  }
-};
-
-// ======================
-// Route: Poll payment status (used by the chatbot while waiting)
-// ======================
-const getPaymentStatus = async (req, res) => {
-  try {
-    const { transactionUuid } = req.params;
-    const payment = await Payment.findOne({ transactionUuid }).populate({
-      path: "appointmentId",
-      populate: { path: "doctorId", populate: { path: "userId", select: "name" } },
+    res.json({
+      appointmentId: appointment._id,
+      tokenNumber: appointment.tokenNumber,
+      doctorId: payment.doctorId,
+      doctorName,
+      date: payment.date,
+      patient: payment.patientDetails,
     });
-
-    if (!payment) {
-      return res.status(404).json({ success: false, message: "Payment session not found" });
-    }
-
-    return res.status(200).json({
-      success: true,
-      status: payment.status,
-      appointment: payment.appointmentId || null,
-    });
-  } catch (error) {
-    return errorHandler(res, error);
+  } catch (err) {
+    console.error("eSewa verify error:", err);
+    res.status(500).json({ message: err.message || "Could not verify payment." });
   }
-};
+}
 
-module.exports = {
-  initiatePayment,
-  getPaymentForm,
-  esewaSuccess,
-  esewaFailure,
-  getPaymentStatus,
-};
+module.exports = { initiateEsewaPayment, verifyEsewaPayment };

@@ -7,6 +7,9 @@ const patientSchema = new mongoose.Schema(
       ref: "User",
       required: true
     },
+    name: {
+      type: String,
+    },
 
     bloodGroup: {
       type: String,

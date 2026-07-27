@@ -2,75 +2,66 @@ const mongoose = require("mongoose");
 
 const paymentSchema = new mongoose.Schema(
   {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true
-    },
-
-    doctorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Doctor",
-      required: true
-    },
-
-    department: {
-      type: String
-    },
-
-    date: {
-      type: Date,
-      required: true
-    },
-
-    reason: {
-      type: String
-    },
-
-    patientDetails: {
-      name: { type: String, required: true },
-      age: { type: Number, required: true },
-      gender: { type: String, enum: ["male", "female", "other"], required: true }
-    },
-
-    amount: {
-      type: Number,
-      required: true
-    },
-
     transactionUuid: {
       type: String,
       required: true,
-      unique: true
+      unique: true,
     },
-
+    patientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Patient",
+      required: true,
+    },
+    doctorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Doctor",
+      required: true,
+    },
+    department: {
+      type: String,
+      required: true,
+    },
+    // Who the appointment is actually for (may differ from the account
+    // holder — booking for a spouse, child, parent, etc).
+    patientDetails: {
+      name: { type: String, required: true },
+      age: { type: Number, required: true },
+      gender: {
+        type: String,
+        enum: ["male", "female", "other"],
+        required: true,
+      },
+    },
+    date: {
+      type: Date,
+      required: true,
+    },
+    reason: {
+      type: String,
+    },
+    amount: {
+      type: Number,
+      required: true,
+    },
     productCode: {
       type: String,
-      required: true
+      default: "EPAYTEST",
     },
-
     status: {
       type: String,
-      enum: ["pending", "completed", "failed"],
-      default: "pending"
+      enum: ["PENDING", "COMPLETE", "FAILED"],
+      default: "PENDING",
     },
-
+    // eSewa's own transaction reference, filled in once verified.
     esewaRefId: {
-      type: String
+      type: String,
     },
-
     appointmentId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Appointment"
+      ref: "Appointment",
     },
-
-    rawResponse: {
-      type: mongoose.Schema.Types.Mixed
-    }
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
 
 module.exports = mongoose.model("Payment", paymentSchema);
