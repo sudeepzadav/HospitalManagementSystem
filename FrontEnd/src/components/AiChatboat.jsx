@@ -1,22 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import QRCode from "react-qr-code";
 import api from "../api/axios";
+import { SYMPTOM_KEYWORDS } from "../constant/symptommatcher";
 
 const BRAND = "#0F6E56";
-
-const SYMPTOM_KEYWORDS = {
-  cardiology: ["heart", "chest pain", "palpitation", "blood pressure", "cardiac"],
-  dermatology: ["skin", "rash", "acne", "itch", "eczema"],
-  orthopedics: ["bone", "fracture", "joint", "back pain", "knee", "shoulder", "sprain"],
-  pediatrics: ["child", "baby", "infant", "kid", "toddler"],
-  neurology: ["headache", "migraine", "seizure", "numbness", "dizziness", "nerve"],
-  ent: ["ear", "nose", "throat", "sinus", "hearing"],
-  ophthalmology: ["eye", "vision", "blurry", "sight"],
-  gastroenterology: ["stomach", "abdominal", "digestion", "nausea", "vomit", "acidity"],
-  gynecology: ["pregnan", "menstrual", "period", "gynae"],
-  psychiatry: ["anxiety", "depression", "stress", "sleep", "mental"],
-  general: ["fever", "cold", "cough", "flu", "general checkup"],
-};
 
 // Steps: idle -> problem -> department -> doctor -> date -> confirm -> payment -> done
 const AiChatboat = () => {
@@ -241,14 +228,33 @@ const AiChatboat = () => {
     pollRef.current = setInterval(async () => {
       try {
         const res = await api.get(`/payments/status/${transactionUuid}`);
+
         if (res.data.status === "completed") {
           stopPolling();
           const appt = res.data.appointment;
+
+          // Safety net: the backend should never send "completed" without an
+          // appointment attached, but if it ever does, don't lie to the user
+          // with a "success" message that has a broken doctor name / token.
+          if (!appt) {
+            addBotMessage(
+              "Payment confirmed, but something went wrong finalizing your appointment. Please contact support with your payment reference."
+            );
+            resetFlow();
+            return;
+          }
+
           const doctorName = appt?.doctorId?.userId?.name || flow.doctor.userId?.name;
           addBotMessage(
             `✅ Payment received! Appointment booked with Dr. ${doctorName} on ${new Date(
               flow.date
-            ).toLocaleDateString()}. Your token number is #${appt?.tokenNumber}.`
+            ).toLocaleDateString()}. Your token number is #${appt.tokenNumber}.`
+          );
+          resetFlow();
+        } else if (res.data.status === "payment_ok_booking_failed") {
+          stopPolling();
+          addBotMessage(
+            "Your payment went through, but that slot couldn't be confirmed (it may have just filled up, or the doctor isn't available that day). Please contact support — you'll be refunded or rebooked."
           );
           resetFlow();
         } else if (res.data.status === "failed") {
@@ -289,7 +295,7 @@ const AiChatboat = () => {
   return (
     <div className="fixed bottom-10 right-5 z-50">
       {open && (
-        <div className="w-80 h-[30rem] bg-white rounded-2xl shadow-xl border border-gray-200 flex flex-col overflow-hidden">
+        <div className="w-80 h-120 bg-white rounded-2xl shadow-xl border border-gray-200 flex flex-col overflow-hidden">
           <div
             className="text-white px-4 py-3 flex justify-between items-center"
             style={{ background: BRAND }}
