@@ -167,9 +167,14 @@ export default function Navbar() {
                   <div className="absolute right-0 mt-2 w-48 rounded-lg py-1 bg-white shadow-lg border border-[#E1E8E7]">
                     {[
                       {
-                        label: "My profile",
+                        label: "Dashboard",
                         icon: FaUserCircle,
-                        onClick: () => setProfileOpen(false),
+                        onClick: () => {
+                          setProfileOpen(false);
+                          navigate(
+                            user?.role === "admin" ? "/admin-dashboard" : "/user-dashboard"
+                          );
+                        },
                       },
                       {
                         label: "Settings",

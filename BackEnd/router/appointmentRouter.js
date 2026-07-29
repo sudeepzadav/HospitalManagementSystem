@@ -12,6 +12,7 @@ const {
   deleteAppointment,
   getQueueStatus,
   matchDepartmentRoute,
+  getMyAppointments,
 } = require("../controller/appointmentController");
 
 // Match a free-text symptom description to a real department (optional, used if not done client-side)
@@ -29,6 +30,9 @@ router.post("/self-book", verifyUser, selfBookAppointment);
 
 // Get appointments (supports ?doctorId=&patientId=&status=&date=)
 router.get("/", verifyUser, getAppointments);
+
+//get my appointment
+router.get("/my-appointments", verifyUser, getMyAppointments);
 
 // Get a single appointment
 router.get("/:id", verifyUser, getAppointmentById);

@@ -12,6 +12,7 @@ const {
   deleteUser,
   getCurrentUser,
   verifyEmail,
+  getUserGrowth,
 } = require("../controller/userController");
 
 // Register user
@@ -28,6 +29,9 @@ router.get("/", getUsers);
 
 //verify email
 router.get("/verify-email/:token", verifyEmail);
+
+// get user growth
+router.get("/growth", getUserGrowth);
 
 // Get single user
 router.get("/:id", getUserById);

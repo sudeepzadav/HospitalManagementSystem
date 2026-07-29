@@ -280,6 +280,46 @@ const deleteUser = async (req, res) => {
   }
 };
 
+//users grow
+const getUserGrowth = async (req, res) => {
+  try {
+    const months = Math.min(parseInt(req.query.months) || 6, 24);
+ 
+    const since = new Date();
+    since.setMonth(since.getMonth() - (months - 1));
+    since.setDate(1);
+    since.setHours(0, 0, 0, 0);
+ 
+    const raw = await User.aggregate([
+      { $match: { createdAt: { $gte: since } } },
+      {
+        $group: {
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+ 
+    const countMap = new Map(raw.map((r) => [`${r._id.year}-${r._id.month}`, r.count]));
+ 
+    const result = [];
+    const cursor = new Date(since);
+    for (let i = 0; i < months; i++) {
+      const key = `${cursor.getFullYear()}-${cursor.getMonth() + 1}`;
+      result.push({
+        month: cursor.toLocaleDateString(undefined, { month: "short", year: "2-digit" }),
+        count: countMap.get(key) || 0,
+      });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+ 
+    res.status(200).json({ success: true, growth: result });
+  } catch (error) {
+    console.error("getUserGrowth error:", error.message);
+    res.status(500).json({ success: false, message: "Could not load user growth." });
+  }
+};
+
 module.exports = {
   verifyEmail,
   registerUser,
@@ -289,4 +329,5 @@ module.exports = {
   getUserById,
   updateUser,
   deleteUser,
+  getUserGrowth,
 };

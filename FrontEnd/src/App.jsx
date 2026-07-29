@@ -15,6 +15,8 @@ import AiChatboat from "./components/AiChatboat";
 import Auth from "./components/Auth";
 import VerifyEmail from "./pages/verifyEmail";
 import DoctorsProfile from "./pages/DoctorsProfile";
+import UserDashboard from "./components/Dashboard/UserDashboard";
+import AdminDashboard from "./components/Dashboard/AminDashboard";
 
 const App = () => {
   const location = useLocation();
@@ -47,11 +49,14 @@ const App = () => {
         <Route path="/signup" element={<Auth type="signup" />} />
         <Route path="/verify-email/:token" element={<VerifyEmail />} />
         <Route path="/doctor/complete-profile" element={<DoctorsProfile />} />
+        <Route path="/user-dashboard" element={<UserDashboard />} />
+        <Route path="/admin-dashboard" element={<AdminDashboard />} />
       </Routes>
 
       {!hideNavbarAndFooter && (
         <>
           <Footer />
+          <AiChatboat/>
         </>
       )}
     </div>

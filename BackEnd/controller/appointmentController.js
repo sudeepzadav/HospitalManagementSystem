@@ -481,6 +481,41 @@ const matchDepartmentRoute = async (req, res) => {
   }
 };
 
+// ======================
+// getmyappointments
+// ======================
+const getMyAppointments = async (req, res) => {
+  try {
+    const patient = await Patient.findOne({ userId: req.user.id });
+ 
+    if (!patient) {
+      // No patient record yet means they've never booked — not an error
+      return res.status(200).json({ success: true, upcoming: [], past: [] });
+    }
+ 
+    const appointments = await Appointment.find({ patientId: patient._id })
+      .populate({ path: "doctorId", populate: { path: "userId", select: "name email phone" } })
+      .sort({ date: -1, tokenNumber: 1 });
+ 
+    const today = startOfDay(new Date());
+    const upcoming = [];
+    const past = [];
+ 
+    for (const appt of appointments) {
+      const isUpcoming =
+        appt.date >= today && ["pending", "confirmed"].includes(appt.status);
+      (isUpcoming ? upcoming : past).push(appt);
+    }
+ 
+    // Upcoming soonest-first, past most-recent-first
+    upcoming.sort((a, b) => new Date(a.date) - new Date(b.date));
+    past.sort((a, b) => new Date(b.date) - new Date(a.date));
+ 
+    res.status(200).json({ success: true, upcoming, past });
+  } catch (error) {
+    return errorHandler(res, error);
+  }
+};
 module.exports = {
   createAppointment,
   selfBookAppointment,
@@ -490,7 +525,7 @@ module.exports = {
   deleteAppointment,
   getQueueStatus,
   matchDepartmentRoute,
-  // exported for reuse elsewhere (paymentController, etc. — not HTTP routes)
+  getMyAppointments,
   bookAppointment,
   getQueueStatusForDoctor,
   getOrCreatePatientForUser,
