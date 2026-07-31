@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const verifyUser = require("../middleware/auth");
+const upload = require("../utils/multer");
 
 const {
   registerUser,
@@ -13,10 +14,14 @@ const {
   getCurrentUser,
   verifyEmail,
   getUserGrowth,
+  uploadUserProfilePicture,
 } = require("../controller/userController");
 
 // Register user
 router.post("/register", registerUser);
+
+//upload user picture
+router.post("/profile-picture",verifyUser,upload.single("image"), uploadUserProfilePicture);
 
 // Login user
 router.post("/login", loginUser);
@@ -37,7 +42,7 @@ router.get("/growth", getUserGrowth);
 router.get("/:id", getUserById);
 
 // Update user
-router.put("/:id", updateUser);
+router.put("/update/:id", verifyUser, updateUser);
 
 // Delete user
 router.delete("/:id", deleteUser);

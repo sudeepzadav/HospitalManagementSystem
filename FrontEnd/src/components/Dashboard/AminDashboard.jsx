@@ -127,7 +127,7 @@ const AdminDashboard = () => {
     loadIssues();
 
     api
-      .get("/users/growth", { params: { months: 6 } })
+      .get("/user/growth", { params: { months: 6 } })
       .then((res) => setGrowth(res.data.growth || []))
       .catch(() => setGrowthError("Couldn't load user growth data."))
       .finally(() => setGrowthLoading(false));

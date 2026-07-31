@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ROLE_OPTIONS } from "../constant/roles";
+import { useAuth } from "../context/AuthContext";
 
 const HOSPITAL_IMAGE =
   "https://images.unsplash.com/photo-1551076805-e1869033e561?q=80&w=1200&auto=format&fit=crop";
@@ -36,6 +37,7 @@ const FONT_IMPORT =
 
 const Auth = ({ type = "signin", onSubmit }) => {
   const navigate = useNavigate();
+  const { setUser } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -106,8 +108,9 @@ const Auth = ({ type = "signin", onSubmit }) => {
       // Save JWT
       localStorage.setItem("token", res.data.token);
 
-      // Save user data
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      // Save user data — goes through context so every component
+      // (Navbar, Profile, etc.) reading from useAuth() updates immediately.
+      setUser(res.data.user);
 
       // Redirect
       if (isSignup) {

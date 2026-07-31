@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/axios";
+import { useAuth } from "../../context/AuthContext";
 import {
   FaSearch,
   FaBell,
@@ -42,22 +43,11 @@ function PulseMark() {
 
 export default function Navbar() {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [active, setActive] = useState("Dashboard");
-  const [user, setUser] = useState(null);
   const profileRef = useRef(null);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch (err) {
-        console.log(err);
-      }
-    }
-  }, []);
 
   useEffect(() => {
     function onClick(e) {
@@ -71,16 +61,12 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem("token");
-
       await api.post("/auth/logout");
     } catch (err) {
       console.log(err);
     }
 
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-
+    logout();
     navigate("/signin");
   };
 
@@ -143,15 +129,23 @@ export default function Navbar() {
                   className="flex items-center gap-2 pl-1.5 pr-2 py-1.5 rounded-lg transition-colors hover:bg-[#F1F5F4] focus-visible:outline-2 focus-visible:outline-[#0E6E66] focus-visible:outline-offset-2"
                   onClick={() => setProfileOpen((v) => !v)}
                 >
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold bg-[#0E6E66]">
-                    {user?.name
-                      ? user.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .toUpperCase()
-                      : "U"}
-                  </div>
+                  {user?.profileImage ? (
+                    <img
+                      src={`http://localhost:4000${user.profileImage}`}
+                      alt={user.name || "Profile"}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold bg-[#0E6E66]">
+                      {user?.name
+                        ? user.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                            .toUpperCase()
+                        : "U"}
+                    </div>
+                  )}
                   <div className="hidden md:block text-left leading-tight">
                     <div className="text-sm font-medium text-[#122A2A]">
                       {user?.name}
@@ -172,7 +166,9 @@ export default function Navbar() {
                         onClick: () => {
                           setProfileOpen(false);
                           navigate(
-                            user?.role === "admin" ? "/admin-dashboard" : "/user-dashboard"
+                            user?.role === "admin"
+                              ? "/admin-dashboard"
+                              : "/user-dashboard",
                           );
                         },
                       },

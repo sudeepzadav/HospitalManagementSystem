@@ -53,15 +53,6 @@ function matchDepartment(problemText, availableDepartments = []) {
 
 // ======================
 // Helper: does this doctor work on the given date's weekday?
-//
-// HARDENED + LOGGED: previously this only matched a.day against the full
-// weekday name ("Monday"), which fails silently (bookAppointment just
-// returns "Doctor is not available on <Day>s") if a doctor's availability
-// is stored as abbreviations ("Mon"), lowercase, numbers (0-6), or under a
-// different field name entirely (e.g. "dayOfWeek" instead of "day"). If
-// EVERY booking is failing, this is the most likely cause. The console.log
-// below will print the exact shape of doctor.availability so we can see
-// which case it is.
 // ======================
 const WEEKDAY_ALIASES = {
   sunday: ["sunday", "sun", "0"],
@@ -87,7 +78,6 @@ function isDoctorAvailableOnDate(doctor, dateObj) {
   }
 
   const match = doctor.availability.some((a) => {
-    // Support either `a.day` or a differently-named field, and any casing/abbreviation.
     const rawValue = a && (a.day ?? a.dayOfWeek ?? a.weekday);
     if (rawValue === undefined || rawValue === null) return false;
     const normalized = String(rawValue).trim().toLowerCase();
@@ -107,11 +97,6 @@ function isDoctorAvailableOnDate(doctor, dateObj) {
 
 // ======================
 // Helper: are patientDetails actually complete?
-// IMPORTANT: age must be checked against undefined/null/"" rather than a
-// plain falsy check — `age: 0` (e.g. booking for a newborn) is a valid
-// value but is falsy in JS, so `!patientDetails.age` would wrongly treat
-// it as "missing" and silently reject the booking after payment was
-// already taken.
 // ======================
 function hasCompletePatientDetails(patientDetails) {
   if (!patientDetails) return false;
@@ -134,7 +119,7 @@ async function getQueueStatusForDoctor(doctorId, dateString) {
     const dayName = dateObj.toLocaleDateString("en-US", { weekday: "long" });
     return {
       dayAvailable: false,
-      full: true, // treat as unbookable so callers relying on `full` still behave correctly
+      full: true,
       message: `This doctor is not available on ${dayName}s.`,
       capacity: DAILY_CAP_PER_DOCTOR,
       bookedCount: 0,
@@ -170,14 +155,7 @@ async function getOrCreatePatientForUser(userId) {
 }
 
 // ======================
-// Core booking logic — used by the dashboard route, the self-book route,
-// and the payment controller (once eSewa payment is verified).
-// Assigns the next token number, checks weekday availability + daily cap,
-// and retries on rare token-collision races.
-//
-// LOGGED: every failure path now console.errors the reason + key inputs
-// before returning, so server logs show exactly why a booking failed
-// instead of that information only living in payment.bookingFailureReason.
+// Core booking logic
 // ======================
 async function bookAppointment(
   { userId, patientId, doctorId, department, date, reason, bookedVia, patientDetails },
@@ -190,10 +168,7 @@ async function bookAppointment(
   }
 
   if (!hasCompletePatientDetails(patientDetails)) {
-    console.error(
-      `[bookAppointment] Incomplete patientDetails:`,
-      JSON.stringify(patientDetails)
-    );
+    console.error(`[bookAppointment] Incomplete patientDetails:`, JSON.stringify(patientDetails));
     return { success: false, message: "Patient name, age, and gender are required" };
   }
 
@@ -211,9 +186,7 @@ async function bookAppointment(
   const resolvedPatientId =
     patientId || (userId ? (await getOrCreatePatientForUser(userId))._id : null);
   if (!resolvedPatientId) {
-    console.error(
-      `[bookAppointment] Could not resolve patient. patientId=${patientId} userId=${userId}`
-    );
+    console.error(`[bookAppointment] Could not resolve patient. patientId=${patientId} userId=${userId}`);
     return { success: false, message: "Patient could not be resolved" };
   }
 
@@ -262,7 +235,6 @@ async function bookAppointment(
           tokenNumber,
         })}`
     );
-    // Token collision (rare race condition) — retry with a fresh count
     if (error.code === 11000 && attempt < 2) {
       return bookAppointment(
         { userId, patientId, doctorId, department, date, reason, bookedVia, patientDetails },
@@ -439,7 +411,6 @@ const deleteAppointment = async (req, res) => {
 
 // ======================
 // Route: Get Queue Status for a Doctor on a Date
-// (booked count / capacity / next token / weekday availability)
 // ======================
 const getQueueStatus = async (req, res) => {
   try {
@@ -463,7 +434,6 @@ const getQueueStatus = async (req, res) => {
 
 // ======================
 // Route: Match a free-text problem description to a real department
-// (optional — only needed if the frontend calls this instead of matching client-side)
 // ======================
 const matchDepartmentRoute = async (req, res) => {
   try {
@@ -473,7 +443,7 @@ const matchDepartmentRoute = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      matchedDepartment: matched, // null if nothing matched
+      matchedDepartment: matched,
       departments,
     });
   } catch (error) {
@@ -482,40 +452,51 @@ const matchDepartmentRoute = async (req, res) => {
 };
 
 // ======================
-// getmyappointments
+// Route: Get the logged-in user's own appointments (patient dashboard)
+//
+// FIXED: previously used Patient.findOne({ userId: req.user.id }), which
+// only grabs ONE patient profile. But bookAppointment/getAuthenticatedPatientId
+// create a SEPARATE Patient record per distinct name booked under this
+// account (self, spouse, child, etc). An appointment booked under any
+// Patient record other than whichever one findOne() happened to return
+// first was silently invisible here.
 // ======================
 const getMyAppointments = async (req, res) => {
   try {
-    const patient = await Patient.findOne({ userId: req.user.id });
- 
-    if (!patient) {
+    const userId = req.user?._id || req.user?.id;
+
+    // Every Patient profile tied to this account, not just one.
+    const myPatientIds = await Patient.find({ userId }).distinct("_id");
+
+    if (myPatientIds.length === 0) {
       // No patient record yet means they've never booked — not an error
       return res.status(200).json({ success: true, upcoming: [], past: [] });
     }
- 
-    const appointments = await Appointment.find({ patientId: patient._id })
+
+    const appointments = await Appointment.find({ patientId: { $in: myPatientIds } })
       .populate({ path: "doctorId", populate: { path: "userId", select: "name email phone" } })
       .sort({ date: -1, tokenNumber: 1 });
- 
+
     const today = startOfDay(new Date());
     const upcoming = [];
     const past = [];
- 
+
     for (const appt of appointments) {
       const isUpcoming =
         appt.date >= today && ["pending", "confirmed"].includes(appt.status);
       (isUpcoming ? upcoming : past).push(appt);
     }
- 
+
     // Upcoming soonest-first, past most-recent-first
     upcoming.sort((a, b) => new Date(a.date) - new Date(b.date));
     past.sort((a, b) => new Date(b.date) - new Date(a.date));
- 
+
     res.status(200).json({ success: true, upcoming, past });
   } catch (error) {
     return errorHandler(res, error);
   }
 };
+
 module.exports = {
   createAppointment,
   selfBookAppointment,

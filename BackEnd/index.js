@@ -3,7 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const connectDb = require("./config/connectDb");
-
+const path = require("path");
 const app = express();
 
 // ======================
@@ -52,10 +52,9 @@ app.use("/api/payments", require("./router/paymentRouter"));
 
 app.use("/api/appointments", require("./router/appointmentPdfRouter"));
 
-app.use(
-  "/api/appointments",
-  require("./router/appointmentRouter")
-);
+app.use("/api/appointments", require("./router/appointmentRouter"));
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use(
   "/api/medical-records",

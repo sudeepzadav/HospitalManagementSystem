@@ -9,6 +9,7 @@ import {
   FaExclamationTriangle,
   FaTicketAlt,
 } from "react-icons/fa";
+import ProfilePage from "../Profile";
 
 const INK = "#122A2A";
 const MUTED = "#5B7373";
@@ -42,9 +43,7 @@ function initials(name) {
     .slice(0, 2);
 }
 
-// The same ECG stroke used in the navbar's logo mark, stretched into a
-// full-width divider. Draws once on mount — the one signature visual
-// thread tying the dashboard back to the brand mark.
+
 function PulseDivider() {
   return (
     <svg viewBox="0 0 400 24" className="w-full h-5" preserveAspectRatio="none" aria-hidden="true">
@@ -120,10 +119,7 @@ function ApptBadge({ status }) {
   );
 }
 
-// Boarding-pass style card for the single soonest upcoming appointment —
-// the hero of the page. A dashed perforation and a "stub" nod to a real
-// ticket, since a token number is functionally the same thing: your claim
-// on a specific place in line.
+
 function NextAppointmentHero({ appt }) {
   if (!appt) {
     return (
@@ -289,9 +285,9 @@ const UserDashboard = () => {
   const [paymentsError, setPaymentsError] = useState("");
 
   useEffect(() => {
-    // Profile — your real endpoint is GET /users/me (getCurrentUser).
+    // Profile — your router is mounted at /api/user (singular), not /users.
     api
-      .get("/users/me")
+      .get("/user/me")
       .then((res) => setProfile(res.data?.user || res.data))
       .catch(() => setProfileError(true));
 
@@ -469,54 +465,7 @@ const UserDashboard = () => {
 
         {/* Profile */}
         {activeTab === "profile" && (
-          <div>
-            <SectionHeading eyebrow="Account" title="Profile" />
-            <div className="border rounded-2xl p-6 bg-white max-w-md" style={{ borderColor: BORDER }}>
-              {profileError && (
-                <p className="text-sm" style={{ color: DANGER }}>
-                  Couldn't load profile details from <code className="text-xs bg-gray-50 px-1 rounded">GET /api/users/me</code>.
-                  Make sure you're logged in and the token hasn't expired.
-                </p>
-              )}
-              {!profileError && !profile && (
-                <p className="text-sm" style={{ color: MUTED }}>
-                  Loading…
-                </p>
-              )}
-              {profile && (
-                <div className="flex flex-col gap-4 text-sm">
-                  <div className="flex items-center gap-3 pb-4 border-b" style={{ borderColor: BORDER }}>
-                    <div
-                      className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-semibold"
-                      style={{ background: BRAND }}
-                    >
-                      {initials(profile.name)}
-                    </div>
-                    <div>
-                      <p className="font-semibold" style={{ color: INK }}>
-                        {profile.name || "—"}
-                      </p>
-                      <p className="text-xs" style={{ color: MUTED }}>
-                        Patient
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: FAINT }}>
-                      Email
-                    </p>
-                    <p style={{ color: INK }}>{profile.email || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: FAINT }}>
-                      Phone
-                    </p>
-                    <p style={{ color: INK }}>{profile.phone || "—"}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <ProfilePage />
         )}
       </div>
     </div>
