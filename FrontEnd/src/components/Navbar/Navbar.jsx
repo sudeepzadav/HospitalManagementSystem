@@ -168,6 +168,8 @@ export default function Navbar() {
                           navigate(
                             user?.role === "admin"
                               ? "/admin-dashboard"
+                              : user?.role === "doctor"
+                              ? "/doctor-dashboard"
                               : "/user-dashboard",
                           );
                         },

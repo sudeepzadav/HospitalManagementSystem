@@ -13,11 +13,15 @@ const {
 const { sendVerificationEmail } = require("../utils/sendEmail");
 
 // Verify Email
+//
+// FIXED: this still checked `if (!user)` without ever fetching the user
+// from the database first — `user` was undefined, so this threw
+// "ReferenceError: user is not defined" on every single verification
+// attempt. Added the missing User.findById(decoded.id) lookup.
 async function verifyEmail(req, res) {
   try {
     const { token } = req.params;
     const decoded = verifyToken(token);
-    console.log("DEBUG decoded:", decoded);
 
     if (!decoded) {
       return res.status(400).json({
@@ -26,7 +30,7 @@ async function verifyEmail(req, res) {
       });
     }
 
-     
+    const user = await User.findById(decoded.id);
 
     if (!user) {
       return res
@@ -56,7 +60,6 @@ async function verifyEmail(req, res) {
 const registerUser = async (req, res) => {
   try {
     const { name, email, password, phone, role } = req.body;
-    
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -83,9 +86,10 @@ const registerUser = async (req, res) => {
       password: hashedPassword,
       phone,
       role: role || "patient",
+      // approvalStatus is set automatically by the schema default:
+      // "approved" for patients, "pending" for every other role.
     });
 
-    // Send verification email on registration
     const verificationToken = generateVerificationToken({
       id: user._id,
       email: user.email,
@@ -119,7 +123,6 @@ const loginUser = async (req, res) => {
 
     const user = await User.findOne({ email });
 
-    // Generic message: don't reveal whether the email exists or the password was wrong
     if (!user) {
       return res.status(400).json({
         success: false,
@@ -147,6 +150,26 @@ const loginUser = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Please verify your email. A new verification link has been sent.",
+      });
+    }
+
+    // Every role except "patient" must be approved by an admin before they
+    // can log in. Checked after email verification, so someone always sees
+    // "verify your email" first if both are outstanding, rather than a
+    // confusing "pending approval" message before they've even proven the
+    // email is theirs.
+    if (user.role !== "patient" && user.approvalStatus !== "approved") {
+      if (user.approvalStatus === "rejected") {
+        return res.status(403).json({
+          success: false,
+          message: user.rejectionReason
+            ? `Your account request was declined: ${user.rejectionReason}`
+            : "Your account request was declined. Please contact the hospital admin.",
+        });
+      }
+      return res.status(403).json({
+        success: false,
+        message: "Your account is awaiting admin approval. You'll be notified once it's reviewed.",
       });
     }
 
@@ -186,7 +209,7 @@ const getCurrentUser = async (req, res) => {
   }
 };
 
-// Get all users (should be admin-only — enforce in route middleware)
+// Get all users (admin-only — enforced via isAdmin middleware in the route)
 const getUsers = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
@@ -286,12 +309,12 @@ const deleteUser = async (req, res) => {
 const getUserGrowth = async (req, res) => {
   try {
     const months = Math.min(parseInt(req.query.months) || 6, 24);
- 
+
     const since = new Date();
     since.setMonth(since.getMonth() - (months - 1));
     since.setDate(1);
     since.setHours(0, 0, 0, 0);
- 
+
     const raw = await User.aggregate([
       { $match: { createdAt: { $gte: since } } },
       {
@@ -301,9 +324,9 @@ const getUserGrowth = async (req, res) => {
         },
       },
     ]);
- 
+
     const countMap = new Map(raw.map((r) => [`${r._id.year}-${r._id.month}`, r.count]));
- 
+
     const result = [];
     const cursor = new Date(since);
     for (let i = 0; i < months; i++) {
@@ -314,7 +337,7 @@ const getUserGrowth = async (req, res) => {
       });
       cursor.setMonth(cursor.getMonth() + 1);
     }
- 
+
     res.status(200).json({ success: true, growth: result });
   } catch (error) {
     console.error("getUserGrowth error:", error.message);
@@ -328,15 +351,14 @@ const uploadUserProfilePicture = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, message: "No image file received." });
     }
- 
+
     const userId = req.user?._id || req.user?.id;
     const user = await User.findById(userId);
- 
+
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found." });
     }
- 
-    
+
     if (user.profileImage) {
       const oldPath = path.join(__dirname, "..", user.profileImage);
       fs.unlink(oldPath, (err) => {
@@ -345,16 +367,89 @@ const uploadUserProfilePicture = async (req, res) => {
         }
       });
     }
- 
-    
+
     const relativePath = `/uploads/${req.file.filename}`;
     user.profileImage = relativePath;
     await user.save();
- 
+
     res.status(200).json({ success: true, profileImage: relativePath, user });
   } catch (error) {
     console.error("uploadUserProfilePicture error:", error.message);
     res.status(500).json({ success: false, message: "Could not upload image." });
+  }
+};
+
+// ======================
+// Route (ADMIN): List every non-patient account still pending approval.
+// ======================
+const getPendingApprovals = async (req, res) => {
+  try {
+    const pending = await User.find({
+      role: { $ne: "patient" },
+      approvalStatus: "pending",
+    })
+      .select("-password")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, pending });
+  } catch (error) {
+    return errorHandler(res, error);
+  }
+};
+
+// ======================
+// Route (ADMIN): Approve a pending staff/doctor account.
+// ======================
+const approveUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+    if (user.role === "patient") {
+      return res.status(400).json({ success: false, message: "Patients don't require approval." });
+    }
+
+    user.approvalStatus = "approved";
+    user.rejectionReason = undefined;
+    await user.save();
+
+    const safeUser = user.toObject();
+    delete safeUser.password;
+
+    res.status(200).json({ success: true, message: "User approved.", user: safeUser });
+  } catch (error) {
+    return errorHandler(res, error);
+  }
+};
+
+// ======================
+// Route (ADMIN): Reject a pending staff/doctor account, with an optional
+// reason shown to them if they try to log in.
+// ======================
+const rejectUser = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+    if (user.role === "patient") {
+      return res.status(400).json({ success: false, message: "Patients don't require approval." });
+    }
+
+    user.approvalStatus = "rejected";
+    user.rejectionReason = reason || undefined;
+    await user.save();
+
+    const safeUser = user.toObject();
+    delete safeUser.password;
+
+    res.status(200).json({ success: true, message: "User rejected.", user: safeUser });
+  } catch (error) {
+    return errorHandler(res, error);
   }
 };
 
@@ -369,4 +464,7 @@ module.exports = {
   deleteUser,
   getUserGrowth,
   uploadUserProfilePicture,
+  getPendingApprovals,
+  approveUser,
+  rejectUser,
 };

@@ -13,6 +13,7 @@ const {
   getQueueStatus,
   matchDepartmentRoute,
   getMyAppointments,
+  getMyDoctorSchedule,
 } = require("../controller/appointmentController");
 
 // Match a free-text symptom description to a real department (optional, used if not done client-side)
@@ -33,6 +34,11 @@ router.get("/", verifyUser, getAppointments);
 
 //get my appointment
 router.get("/my-appointments", verifyUser, getMyAppointments);
+
+// Get the logged-in DOCTOR's own schedule (today's queue / upcoming / past)
+// Must stay above "/:id" or the literal string "my-schedule" gets matched
+// as an :id param instead.
+router.get("/my-schedule", verifyUser, getMyDoctorSchedule);
 
 // Get a single appointment
 router.get("/:id", verifyUser, getAppointmentById);

@@ -56,6 +56,7 @@ const TABS = [
   { key: "appointments", label: "Appointments" },
   { key: "doctors", label: "Doctors" },
   { key: "patients", label: "Patients" },
+  { key: "approvals", label: "Approvals" },
   { key: "issues", label: "Payment Issues" },
 ];
 
@@ -90,6 +91,12 @@ const AdminDashboard = () => {
   const [growth, setGrowth] = useState([]);
   const [growthLoading, setGrowthLoading] = useState(true);
   const [growthError, setGrowthError] = useState("");
+
+  // Pending approvals
+  const [pending, setPending] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const [pendingError, setPendingError] = useState("");
+  const [decidingId, setDecidingId] = useState(null);
 
   const loadAppointments = useCallback(() => {
     setApptLoading(true);
@@ -131,8 +138,31 @@ const AdminDashboard = () => {
       .then((res) => setGrowth(res.data.growth || []))
       .catch(() => setGrowthError("Couldn't load user growth data."))
       .finally(() => setGrowthLoading(false));
+
+    loadPending();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function loadPending() {
+    setPendingLoading(true);
+    api
+      .get("/user/pending-approvals")
+      .then((res) => setPending(res.data.pending || []))
+      .catch(() => setPendingError("Couldn't load pending approvals."))
+      .finally(() => setPendingLoading(false));
+  }
+
+  async function decide(userId, action, reason) {
+    setDecidingId(userId);
+    try {
+      await api.put(`/user/${userId}/${action}`, action === "reject" ? { reason } : {});
+      setPending((prev) => prev.filter((u) => u._id !== userId));
+    } catch (err) {
+      alert(err.response?.data?.message || `Couldn't ${action} this account.`);
+    } finally {
+      setDecidingId(null);
+    }
+  }
 
   function loadIssues() {
     setIssuesLoading(true);
@@ -206,6 +236,11 @@ const AdminDashboard = () => {
             style={{ color: activeTab === t.key ? BRAND : MUTED }}
           >
             {t.label}
+            {t.key === "approvals" && pending.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center text-[10px] font-semibold text-white bg-amber-500 rounded-full w-4 h-4">
+                {pending.length}
+              </span>
+            )}
             {t.key === "issues" && issues.length > 0 && (
               <span className="ml-1.5 inline-flex items-center justify-center text-[10px] font-semibold text-white bg-red-500 rounded-full w-4 h-4">
                 {issues.length}
@@ -231,6 +266,11 @@ const AdminDashboard = () => {
             <StatCard label="Cancelled" value={cancelledCount} accent="#C0392B" />
             <StatCard label="Doctors" value={doctors.length} />
             <StatCard label="Patients" value={patients.length} />
+            <StatCard
+              label="Pending Approvals"
+              value={pending.length}
+              accent={pending.length > 0 ? "#B8860B" : undefined}
+            />
             <StatCard
               label="Payment Issues"
               value={issues.length}
@@ -499,6 +539,73 @@ const AdminDashboard = () => {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Approvals */}
+      {activeTab === "approvals" && (
+        <div className="flex flex-col gap-3">
+          {pendingLoading && (
+            <p className="text-sm" style={{ color: MUTED }}>
+              Loading…
+            </p>
+          )}
+          {pendingError && <p className="text-sm text-red-500">{pendingError}</p>}
+
+          {!pendingLoading && !pendingError && pending.length === 0 && (
+            <div className="text-center py-14 rounded-xl border border-dashed" style={{ borderColor: BORDER }}>
+              <p className="text-sm font-medium" style={{ color: INK }}>
+                No accounts awaiting approval
+              </p>
+              <p className="text-xs mt-1" style={{ color: MUTED }}>
+                New doctor, nurse, or staff signups will show up here.
+              </p>
+            </div>
+          )}
+
+          {pending.map((u) => (
+            <div
+              key={u._id}
+              className="border rounded-xl p-4 bg-white flex items-center justify-between gap-4"
+              style={{ borderColor: BORDER }}
+            >
+              <div>
+                <p className="text-sm font-medium" style={{ color: INK }}>
+                  {u.name}{" "}
+                  <span className="text-xs font-normal capitalize" style={{ color: MUTED }}>
+                    · {u.role.replace("_", " ")}
+                  </span>
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: MUTED }}>
+                  {u.email} {u.phone ? `· ${u.phone}` : ""}
+                </p>
+                <p className="text-[10px] mt-1" style={{ color: MUTED }}>
+                  Requested {formatDate(u.createdAt)}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => decide(u._id, "approve")}
+                  disabled={decidingId === u._id}
+                  className="text-xs font-semibold text-white rounded-lg px-3 py-2 disabled:opacity-50"
+                  style={{ background: BRAND }}
+                >
+                  {decidingId === u._id ? "…" : "Approve"}
+                </button>
+                <button
+                  onClick={() => {
+                    const reason = window.prompt("Reason for rejecting (optional):") || "";
+                    decide(u._id, "reject", reason);
+                  }}
+                  disabled={decidingId === u._id}
+                  className="text-xs font-semibold rounded-lg px-3 py-2 border disabled:opacity-50"
+                  style={{ borderColor: "#C0392B", color: "#C0392B" }}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

@@ -43,6 +43,20 @@ const userSchema = new mongoose.Schema(
       default: "patient"
     },
 
+    
+    approvalStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: function () {
+        return this.role === "patient" ? "approved" : "pending";
+      }
+    },
+
+    
+    rejectionReason: {
+      type: String
+    },
+
     gender: {
       type: String,
       enum: ["male", "female", "other"]

@@ -128,6 +128,7 @@ const Doctors = () => {
               </div>
             </a>
           ))}
+          <Profile />
 
           {visible.length === 0 && (
             <p className="col-span-full text-sm text-[#4A6B62] py-8 text-center">

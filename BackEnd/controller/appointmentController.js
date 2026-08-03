@@ -497,6 +497,67 @@ const getMyAppointments = async (req, res) => {
   }
 };
 
+// ======================
+// Route: Get the logged-in DOCTOR's own schedule (doctor dashboard).
+// Resolves via the Doctor profile linked to this user account (Doctor is
+// a separate collection from User, joined by userId), not directly by
+// User id — an appointment's doctorId points at a Doctor document.
+// ======================
+const getMyDoctorSchedule = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+    const doctor = await Doctor.findOne({ userId });
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "No doctor profile is linked to this account.",
+      });
+    }
+
+    const appointments = await Appointment.find({ doctorId: doctor._id })
+      .populate({ path: "patientId", populate: { path: "userId", select: "name email phone" } })
+      .sort({ date: -1, tokenNumber: 1 });
+
+    const today = startOfDay(new Date());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayList = [];
+    const upcoming = [];
+    const past = [];
+
+    for (const appt of appointments) {
+      const apptDay = startOfDay(appt.date);
+      const isActive = ["pending", "confirmed"].includes(appt.status);
+
+      if (apptDay.getTime() === today.getTime() && isActive) {
+        todayList.push(appt);
+      } else if (apptDay > today && isActive) {
+        upcoming.push(appt);
+      } else {
+        past.push(appt);
+      }
+    }
+
+    // Today sorted by token order (queue order), upcoming soonest-first,
+    // past most-recent-first.
+    todayList.sort((a, b) => a.tokenNumber - b.tokenNumber);
+    upcoming.sort((a, b) => new Date(a.date) - new Date(b.date));
+    past.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.status(200).json({
+      success: true,
+      doctor,
+      today: todayList,
+      upcoming,
+      past,
+    });
+  } catch (error) {
+    return errorHandler(res, error);
+  }
+};
+
 module.exports = {
   createAppointment,
   selfBookAppointment,
@@ -507,6 +568,7 @@ module.exports = {
   getQueueStatus,
   matchDepartmentRoute,
   getMyAppointments,
+  getMyDoctorSchedule,
   bookAppointment,
   getQueueStatusForDoctor,
   getOrCreatePatientForUser,

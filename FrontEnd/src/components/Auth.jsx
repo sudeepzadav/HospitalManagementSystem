@@ -108,8 +108,7 @@ const Auth = ({ type = "signin", onSubmit }) => {
       // Save JWT
       localStorage.setItem("token", res.data.token);
 
-      // Save user data — goes through context so every component
-      // (Navbar, Profile, etc.) reading from useAuth() updates immediately.
+      
       setUser(res.data.user);
 
       // Redirect
@@ -132,9 +131,7 @@ const Auth = ({ type = "signin", onSubmit }) => {
     }
   };
 
-  // Doctors need a completed Doctor profile (department, specialization,
-  // availability, etc.) before patients can find/book them. If they don't
-  // have one yet, send them to the setup page instead of the homepage.
+  
   const redirectAfterLogin = async (user) => {
     if (user?.role !== "doctor") {
       navigate("/");
@@ -149,8 +146,7 @@ const Auth = ({ type = "signin", onSubmit }) => {
         navigate("/");
       }
     } catch (err) {
-      // If the check itself fails, don't block login — just go home.
-      // The doctor can be prompted again next time.
+      
       console.log("Could not check doctor profile status:", err);
       navigate("/");
     }
