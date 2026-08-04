@@ -1,14 +1,45 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { departments } from "../constant/departments";
-import { doctors } from "../constant/doctors";
 import { stats } from "../constant/stats";
 import heroSection from "../assets/image/heroSection.jpg";
 import { useNavigate } from "react-router-dom";
+import api from "../api/axios";
 
 export default function Home() {
   const [dept, setDept] = useState("");
   const [date, setDate] = useState("");
   const navigate = useNavigate();
+
+  const [doctors, setDoctors] = useState([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(true);
+  const [doctorsError, setDoctorsError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDoctors() {
+      setLoadingDoctors(true);
+      setDoctorsError("");
+      try {
+        const res = await api.get("/doctors");
+        if (!cancelled) setDoctors(res.data || []);
+      } catch (err) {
+        if (!cancelled) {
+          setDoctorsError("Couldn't load doctors right now.");
+        }
+      } finally {
+        if (!cancelled) setLoadingDoctors(false);
+      }
+    }
+
+    loadDoctors();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Homepage only teases a few — the full roster lives on /doctors.
+  const featuredDoctors = doctors.slice(0, 4);
 
   function handleSearch(e) {
     e.preventDefault();
@@ -64,21 +95,47 @@ export default function Home() {
             View all doctors
           </button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {doctors.map((doc) => (
-            <div
-              key={doc.name}
-              className="border border-[#DDE6E2] rounded-2xl p-6 text-center"
-            >
-              <div className="w-16 h-16 rounded-full bg-[#E1F5EE] mx-auto mb-4 flex items-center justify-center text-[#0F6E56] font-semibold text-lg">
-                {doc.name.split(" ").slice(-1)[0][0]}
-              </div>
-              <h3 className="text-sm font-semibold mb-0.5">{doc.name}</h3>
-              <p className="text-sm text-[#0F6E56] mb-0.5">{doc.role}</p>
-              <p className="text-xs text-[#4A6B62]">{doc.years}</p>
-            </div>
-          ))}
-        </div>
+
+        {loadingDoctors && (
+          <p className="text-sm text-[#4A6B62] py-8 text-center">
+            Loading doctors…
+          </p>
+        )}
+
+        {!loadingDoctors && doctorsError && (
+          <p className="text-sm text-red-500 py-8 text-center">{doctorsError}</p>
+        )}
+
+        {!loadingDoctors && !doctorsError && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {featuredDoctors.map((doc) => {
+              const name = doc.userId?.name || "Unknown";
+              return (
+                <div
+                  key={doc._id}
+                  className="border border-[#DDE6E2] rounded-2xl p-6 text-center"
+                >
+                  <div className="w-16 h-16 rounded-full bg-[#E1F5EE] mx-auto mb-4 flex items-center justify-center text-[#0F6E56] font-semibold text-lg">
+                    {name.split(" ").slice(-1)[0][0]}
+                  </div>
+                  <h3 className="text-sm font-semibold mb-0.5">Dr. {name}</h3>
+                  <p className="text-sm text-[#0F6E56] mb-0.5">
+                    {doc.specialization}
+                  </p>
+                  <p className="text-xs text-[#4A6B62]">
+                    {doc.experience || 0} yrs experience
+                  </p>
+                </div>
+              );
+            })}
+
+            {featuredDoctors.length === 0 && (
+              <p className="col-span-full text-sm text-[#4A6B62] py-8 text-center">
+                No doctors listed yet.
+              </p>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );

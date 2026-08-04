@@ -14,7 +14,7 @@ function signEsewaFields({ totalAmount, transactionUuid, productCode }) {
   return crypto.createHmac("sha256", ESEWA_SECRET_KEY).update(message).digest("base64");
 }
 
-// eSewa's success callback signs a different (and longer) set of fields
+
 function computeSignatureFromPayload(payload, signedFieldNames) {
   const message = signedFieldNames
     .split(",")
@@ -24,11 +24,7 @@ function computeSignatureFromPayload(payload, signedFieldNames) {
   return crypto.createHmac("sha256", ESEWA_SECRET_KEY).update(message).digest("base64");
 }
 
-// Resolves the logged-in account + the specific person being booked for to
-// a Patient profile document. Each distinct name under this account gets
-// its own Patient record (so a parent, spouse, child, etc. each keep their
-// own medical history), while booking the same name again reuses the
-// existing record instead of duplicating it.
+
 async function getAuthenticatedPatientId(req, patientName) {
   const userId = req.user?._id || req.user?.id;
   if (!userId) {
@@ -43,10 +39,7 @@ async function getAuthenticatedPatientId(req, patientName) {
   return patient._id;
 }
 
-// Placeholder token-number logic: counts existing active appointments for
-// this doctor on this date and adds 1. Replace with whatever your booking
-// system already uses elsewhere (e.g. the same logic behind
-// /appointments/queue-status) so token numbers stay consistent.
+
 async function getNextTokenNumber(doctorId, date) {
   const count = await Appointment.countDocuments({
     doctorId,
@@ -76,8 +69,7 @@ async function initiateEsewaPayment(req, res) {
       productCode: ESEWA_PRODUCT_CODE,
     });
 
-    // Persist the pending payment so /verify can create the appointment
-    // itself, instead of trusting whatever the client sends back.
+    
     await Payment.create({
       transactionUuid,
       patientId,
@@ -112,9 +104,7 @@ async function initiateEsewaPayment(req, res) {
   }
 }
 
-// Small helper so every failure branch in verifyEsewaPayment consistently
-// persists WHY, instead of the reason only ever living in a one-time
-// response the client might not still be around to see.
+
 async function markFailed(payment, reason) {
   payment.status = "FAILED";
   payment.failureReason = reason;
@@ -129,7 +119,6 @@ async function verifyEsewaPayment(req, res) {
       return res.status(400).json({ message: "Missing payment data." });
     }
 
-    // eSewa appends this as a base64-encoded JSON string to success_url.
     const decoded = JSON.parse(Buffer.from(data, "base64").toString("utf-8"));
     const {
       transaction_uuid,
@@ -146,8 +135,7 @@ async function verifyEsewaPayment(req, res) {
       return res.status(400).json({ message: "Unknown or expired transaction." });
     }
 
-    // If this was already verified (e.g. the user refreshed the success
-    // page), just return the existing appointment instead of redoing work.
+  
     if (payment.status === "COMPLETE" && payment.appointmentId) {
       const existing = await Appointment.findById(payment.appointmentId);
       return res.json({
@@ -159,9 +147,7 @@ async function verifyEsewaPayment(req, res) {
       });
     }
 
-    // Recompute the signature using eSewa's own signed_field_names so we
-    // build the message the same way eSewa did — don't trust the redirect
-    // payload blindly.
+    
     const expectedSignature = computeSignatureFromPayload(decoded, signed_field_names);
 
     if (expectedSignature !== signature) {
@@ -180,8 +166,6 @@ async function verifyEsewaPayment(req, res) {
       return res.status(400).json({ message: `Payment not complete (status: ${status}).` });
     }
 
-    // Double-check directly with eSewa's status-check API before trusting
-    // the redirect at all — this is the step that actually confirms payment.
     const statusUrl = `${ESEWA_STATUS_CHECK_URL}?product_code=${product_code}&total_amount=${total_amount}&transaction_uuid=${transaction_uuid}`;
     const statusRes = await fetch(statusUrl);
     const statusData = await statusRes.json();
@@ -203,11 +187,6 @@ async function verifyEsewaPayment(req, res) {
       console.warn("Could not look up doctor name:", lookupErr.message);
     }
 
-    // Create the actual appointment now that payment is confirmed.
-    // Wrapped separately so that if THIS specific step fails (daily cap
-    // filled up in the meantime, a validation error, etc.), we record why
-    // on the payment itself rather than losing that reason to a generic
-    // 500 the user may never see.
     let appointment;
     try {
       appointment = await Appointment.create({
@@ -257,13 +236,6 @@ async function verifyEsewaPayment(req, res) {
 
 // ======================
 // Route: Get the logged-in user's own payment history (patient dashboard)
-//
-// FIXED: previously queried Payment.find({ userId: req.user.id }), but
-// Payment has no `userId` field at all — only `patientId`, which refers to
-// a Patient document, not a User directly. A single logged-in account can
-// also have MULTIPLE Patient records (one per person booked for — see
-// getAuthenticatedPatientId above), so "my payments" means every payment
-// across all Patient profiles tied to this account, not just one.
 // ======================
 const getMyPayments = async (req, res) => {
   try {
@@ -300,8 +272,6 @@ const getMyPayments = async (req, res) => {
 
 // ======================
 // Route (ADMIN): List every failed payment, newest first, so support can
-// see WHY without needing the user to report it — including the rare
-// "payment verified but appointment couldn't be created" case.
 // ======================
 const getPaymentIssues = async (req, res) => {
   try {
@@ -318,11 +288,6 @@ const getPaymentIssues = async (req, res) => {
 
 // ======================
 // Route (ADMIN): Retry appointment creation for a payment that was
-// verified by eSewa but whose appointment creation failed. Only makes
-// sense for the specific failure case where eSewa itself confirmed the
-// payment (failureReason mentions "Payment was verified") — a signature
-// mismatch or an unconfirmed eSewa payment can't be retried this way,
-// since eSewa never actually confirmed the money moved.
 // ======================
 const retryFailedBooking = async (req, res) => {
   try {

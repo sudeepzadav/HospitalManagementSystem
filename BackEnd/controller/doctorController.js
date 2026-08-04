@@ -93,8 +93,7 @@ const deleteDoctor = async (req, res) => {
 const getMyDoctorProfile = async (req, res) => {
   try {
     const doctor = await Doctor.findOne({ userId: req.user.id }).populate("userId");
-    // Not an error if it doesn't exist yet — the frontend uses `doctor: null`
-    // to know it should show the profile-setup form.
+    
     res.status(200).json({ success: true, doctor: doctor || null });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

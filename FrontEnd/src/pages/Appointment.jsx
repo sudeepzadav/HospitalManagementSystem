@@ -96,7 +96,6 @@ const Appointment = () => {
     };
 
     // Hand the booking details to the payment page. Cleared once the
-    // appointment is confirmed (see PaymentSuccess.jsx).
     sessionStorage.setItem("pendingBooking", JSON.stringify(booking));
     navigate("/appointment/payment");
   }

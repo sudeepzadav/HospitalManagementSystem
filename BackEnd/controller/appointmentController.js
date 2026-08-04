@@ -453,13 +453,6 @@ const matchDepartmentRoute = async (req, res) => {
 
 // ======================
 // Route: Get the logged-in user's own appointments (patient dashboard)
-//
-// FIXED: previously used Patient.findOne({ userId: req.user.id }), which
-// only grabs ONE patient profile. But bookAppointment/getAuthenticatedPatientId
-// create a SEPARATE Patient record per distinct name booked under this
-// account (self, spouse, child, etc). An appointment booked under any
-// Patient record other than whichever one findOne() happened to return
-// first was silently invisible here.
 // ======================
 const getMyAppointments = async (req, res) => {
   try {
@@ -499,9 +492,6 @@ const getMyAppointments = async (req, res) => {
 
 // ======================
 // Route: Get the logged-in DOCTOR's own schedule (doctor dashboard).
-// Resolves via the Doctor profile linked to this user account (Doctor is
-// a separate collection from User, joined by userId), not directly by
-// User id — an appointment's doctorId points at a Doctor document.
 // ======================
 const getMyDoctorSchedule = async (req, res) => {
   try {
@@ -540,8 +530,7 @@ const getMyDoctorSchedule = async (req, res) => {
       }
     }
 
-    // Today sorted by token order (queue order), upcoming soonest-first,
-    // past most-recent-first.
+    
     todayList.sort((a, b) => a.tokenNumber - b.tokenNumber);
     upcoming.sort((a, b) => new Date(a.date) - new Date(b.date));
     past.sort((a, b) => new Date(b.date) - new Date(a.date));

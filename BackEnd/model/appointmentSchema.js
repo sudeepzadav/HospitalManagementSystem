@@ -19,8 +19,7 @@ const appointmentSchema = new mongoose.Schema(
       required: true
     },
 
-    // Who the appointment is actually for — may differ from the logged-in
-    // account holder (e.g. booking for a spouse, child, or parent).
+    
     patientDetails: {
       name: {
         type: String,

@@ -6,7 +6,7 @@ const PaymentSuccess = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [status, setStatus] = useState("verifying"); // verifying | confirmed | error
+  const [status, setStatus] = useState("verifying"); 
   const [appointment, setAppointment] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -49,9 +49,6 @@ const PaymentSuccess = () => {
       const booking = JSON.parse(stored);
 
       try {
-        // Backend should: decode `data`, call eSewa's transaction status-check
-        // API to confirm it really succeeded, then create the appointment
-        // and return it.
         const res = await api.post("/payments/esewa/verify", {
           data,
           doctorId: booking.doctorId,

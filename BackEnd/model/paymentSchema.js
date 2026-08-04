@@ -21,8 +21,7 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    // Who the appointment is actually for (may differ from the account
-    // holder — booking for a spouse, child, parent, etc).
+    
     patientDetails: {
       name: { type: String, required: true },
       age: { type: Number, required: true },
@@ -49,15 +48,11 @@ const paymentSchema = new mongoose.Schema(
       enum: ["PENDING", "COMPLETE", "FAILED"],
       default: "PENDING",
     },
-    // Set whenever status becomes "FAILED" — signature mismatch, eSewa
-    // status-check rejection, or (rarely) the appointment itself failing
-    // to create after payment was otherwise verified. Without this, that
-    // reason only ever lived in a one-time API response the user might
-    // never have seen, with zero record left in the database afterward.
+    
     failureReason: {
       type: String,
     },
-    // eSewa's own transaction reference, filled in once verified.
+   
     esewaRefId: {
       type: String,
     },

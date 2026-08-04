@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
-import QRCode from "react-qr-code";
 import api from "../api/axios";
 import { SYMPTOM_KEYWORDS } from "../constant/symptommatcher";
 
 const BRAND = "#0F6E56";
 
-// Steps: idle -> problem -> department -> doctor -> date -> confirm -> payment -> done
+// Steps: idle -> patientInfo -> problem -> department -> date -> doctor -> confirm -> awaitingPayment -> done
+// eSewa requires a real signed form POST + redirect, which can't happen
+// invisibly inside this widget. Instead we open /appointment/payment in a
+// background tab and keep chatting — PaymentSuccess/PaymentFailure post a
+// message back to this tab (window.opener) the moment payment resolves.
 const AiChatboat = () => {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
@@ -21,6 +24,8 @@ const AiChatboat = () => {
 
   const [doctors, setDoctors] = useState([]);
   const [departments, setDepartments] = useState([]);
+
+  // Array of { doctor, bookedCount, capacity, full, nextToken } once a date has been picked
   const [filteredDoctors, setFilteredDoctors] = useState([]);
 
   const [flow, setFlow] = useState({
@@ -29,36 +34,43 @@ const AiChatboat = () => {
     department: "",
     doctor: null,
     date: "",
+    bookedCount: null,
+    capacity: null,
+    nextToken: null,
   });
 
   const [patientForm, setPatientForm] = useState({ name: "", age: "", gender: "" });
 
-  const [payment, setPayment] = useState(null); // { transactionUuid, amount, paymentPageUrl }
-  const pollRef = useRef(null);
+  const paymentTabRef = useRef(null);
+  const paymentResolvedRef = useRef(false);
+  const watchIntervalRef = useRef(null);
 
   const addBotMessage = (text) => setMessages((prev) => [...prev, { sender: "bot", text }]);
   const addUserMessage = (text) => setMessages((prev) => [...prev, { sender: "user", text }]);
 
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+  const stopWatchingPaymentTab = () => {
+    if (watchIntervalRef.current) {
+      clearInterval(watchIntervalRef.current);
+      watchIntervalRef.current = null;
     }
   };
 
-  useEffect(() => () => stopPolling(), []); // cleanup on unmount
-
   const resetFlow = () => {
-    stopPolling();
+    stopWatchingPaymentTab();
+    paymentTabRef.current = null;
+    paymentResolvedRef.current = false;
     setFlow({
       patientDetails: { name: "", age: "", gender: "" },
       problem: "",
       department: "",
       doctor: null,
       date: "",
+      bookedCount: null,
+      capacity: null,
+      nextToken: null,
     });
     setPatientForm({ name: "", age: "", gender: "" });
-    setPayment(null);
+    setFilteredDoctors([]);
     setStep("idle");
   };
 
@@ -98,13 +110,11 @@ const AiChatboat = () => {
       const matchedDept = matchDepartment(problem, uniqueDepartments);
 
       if (matchedDept) {
-        const inDept = list.filter((d) => d.department === matchedDept);
-        setFilteredDoctors(inDept);
         setFlow((prev) => ({ ...prev, department: matchedDept }));
         addBotMessage(
-          `That sounds like it falls under ${matchedDept}. Here are the doctors available — or you can browse all departments instead.`
+          `That sounds like it falls under ${matchedDept}. What date would you like to come in? (You can also browse all departments once you see the doctor list.)`
         );
-        setStep("doctor");
+        setStep("date");
       } else {
         addBotMessage("Got it. Which department would you like to see a doctor in?");
         setStep("department");
@@ -129,35 +139,74 @@ const AiChatboat = () => {
   const showAllDepartments = () => {
     addUserMessage("Show all departments");
     addBotMessage("Sure, here are all departments:");
+    setFilteredDoctors([]);
     setStep("department");
   };
 
   const pickDepartment = (dept) => {
     addUserMessage(dept);
-    const inDept = doctors.filter((d) => d.department === dept);
-    setFilteredDoctors(inDept);
     setFlow((prev) => ({ ...prev, department: dept }));
 
-    if (inDept.length === 0) {
-      addBotMessage(`Sorry, there are no doctors currently listed under ${dept}.`);
-      setStep("department");
-      return;
+    // If we already have a date from a previous attempt (e.g. user switched
+    // departments after seeing the doctor list), reuse it and go straight
+    // to fetching availability instead of asking again.
+    if (flow.date) {
+      fetchDoctorsWithStatus(dept, flow.date);
+    } else {
+      addBotMessage(`Got it. What date would you like to come in for ${dept}?`);
+      setStep("date");
     }
-
-    addBotMessage(`Here are the doctors in ${dept}:`);
-    setStep("doctor");
   };
 
-  const pickDoctor = (doctor) => {
-    const doctorName = doctor.userId?.name || "the doctor";
-    addUserMessage(`Dr. ${doctorName}`);
-    setFlow((prev) => ({ ...prev, doctor }));
-    addBotMessage(`Great choice. What date would you like to see Dr. ${doctorName}?`);
-    setStep("date");
+  // Mirrors the manual Appointment page: fetch every doctor in the
+  // department, then check queue-status for each on the chosen date so we
+  // can show live Available/Full badges before the user picks anyone.
+  const fetchDoctorsWithStatus = async (dept, dateValue) => {
+    setLoading(true);
+    try {
+      const inDept = doctors.filter((d) => d.department === dept);
+
+      if (inDept.length === 0) {
+        addBotMessage(`Sorry, there are no doctors currently listed under ${dept}.`);
+        setStep("department");
+        return;
+      }
+
+      const statusResults = await Promise.all(
+        inDept.map(async (doctor) => {
+          try {
+            const statusRes = await api.get("/appointments/queue-status", {
+              params: { doctorId: doctor._id, date: dateValue },
+            });
+            return { doctor, ...statusRes.data };
+          } catch (err) {
+            // If status check fails for a specific doctor, show them as
+            // unknown rather than dropping the whole list
+            return { doctor, bookedCount: null, capacity: null, full: null, nextToken: null };
+          }
+        })
+      );
+
+      setFilteredDoctors(statusResults);
+      setFlow((prev) => ({ ...prev, department: dept, date: dateValue }));
+      addBotMessage(
+        `Here's availability in ${dept} on ${new Date(dateValue).toLocaleDateString(undefined, {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        })}:`
+      );
+      setStep("doctor");
+    } catch (err) {
+      addBotMessage("Sorry, we couldn't load availability right now. Please try again.");
+      setStep("date");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const submitDate = async (dateValue) => {
-    if (!dateValue) return;
+  const submitDeptDate = (dateValue) => {
+    if (!dateValue || !flow.department) return;
     addUserMessage(
       new Date(dateValue).toLocaleDateString(undefined, {
         weekday: "long",
@@ -166,107 +215,118 @@ const AiChatboat = () => {
         day: "numeric",
       })
     );
-    setFlow((prev) => ({ ...prev, date: dateValue }));
-    setLoading(true);
+    fetchDoctorsWithStatus(flow.department, dateValue);
+  };
 
-    try {
-      const res = await api.get("/appointments/queue-status", {
-        params: { doctorId: flow.doctor._id, date: dateValue },
-      });
+  const pickDoctor = (item) => {
+    const { doctor, bookedCount, capacity, full, nextToken } = item;
+    if (full) return; // guarded in the UI too, but just in case
 
-      const { bookedCount, capacity, full, nextToken } = res.data;
+    const doctorName = doctor.userId?.name || "the doctor";
+    addUserMessage(`Dr. ${doctorName}`);
+    setFlow((prev) => ({ ...prev, doctor, bookedCount, capacity, nextToken }));
+    addBotMessage(
+      `Great choice. You'd be token #${nextToken} with Dr. ${doctorName} (${bookedCount}/${capacity} booked). Please confirm below:`
+    );
+    setStep("confirm");
+  };
 
-      if (full) {
+  // ======================
+  // Payment — a signed eSewa form POST has to be a real page navigation,
+  // so we open /appointment/payment in its own tab and keep the widget
+  // open here. PaymentSuccess/PaymentFailure post a message back to this
+  // tab (their window.opener) the moment payment resolves.
+  // ======================
+
+  useEffect(() => {
+    function handlePaymentMessage(event) {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || data.type !== "appointment-payment-result") return;
+
+      paymentResolvedRef.current = true;
+      stopWatchingPaymentTab();
+
+      if (data.status === "confirmed" && data.appointment) {
+        const appt = data.appointment;
+        const doctorName = appt.doctorName || flow.doctor?.userId?.name || "the doctor";
         addBotMessage(
-          `This doctor is fully booked on that day (${bookedCount}/${capacity}). Please pick another date.`
+          `✅ Payment received! Appointment booked with Dr. ${doctorName} on ${new Date(
+            appt.date || flow.date
+          ).toLocaleDateString()}. Your token number is #${appt.tokenNumber}.`
         );
-        setStep("date");
+        resetFlow();
+      } else if (data.status === "failed") {
+        addBotMessage("Payment didn't go through. Would you like to try again?");
+        setStep("confirm");
       } else {
-        setFlow((prev) => ({ ...prev, nextToken, bookedCount, capacity }));
         addBotMessage(
-          `${bookedCount}/${capacity} booked for that day. You'd be token #${nextToken}. Please confirm below:`
+          "We couldn't confirm the payment automatically. If you completed it, check the payment tab before trying again."
         );
         setStep("confirm");
       }
-    } catch (err) {
-      addBotMessage("Sorry, I couldn't check the doctor's schedule. Please try another date.");
-      setStep("date");
-    } finally {
-      setLoading(false);
     }
-  };
 
-  // ======================
-  // Proceed to payment (replaces direct booking)
-  // ======================
-  const proceedToPayment = async () => {
-    setLoading(true);
-    try {
-      const res = await api.post("/payments/initiate", {
-        doctorId: flow.doctor._id,
-        department: flow.department,
-        date: flow.date,
-        reason: flow.problem,
-        patientDetails: flow.patientDetails,
-      });
+    window.addEventListener("message", handlePaymentMessage);
+    return () => {
+      window.removeEventListener("message", handlePaymentMessage);
+      stopWatchingPaymentTab();
+    };
+  }, [flow.doctor, flow.date]);
 
-      setPayment(res.data);
-      addBotMessage(
-        `Please pay NPR ${res.data.amount} to confirm your booking. Scan the QR code with your phone, or use the link on this device.`
-      );
-      setStep("payment");
-      startPolling(res.data.transactionUuid);
-    } catch (err) {
-      addBotMessage(err.response?.data?.message || "Sorry, couldn't start the payment. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleBookAndPay = () => {
+    addUserMessage("Proceed to payment");
 
-  const startPolling = (transactionUuid) => {
-    stopPolling();
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await api.get(`/payments/status/${transactionUuid}`);
+    const booking = {
+      patient: {
+        name: flow.patientDetails.name,
+        age: flow.patientDetails.age,
+        gender: flow.patientDetails.gender,
+      },
+      doctorId: flow.doctor._id,
+      doctorName: flow.doctor.userId?.name || "Unknown",
+      specialization: flow.doctor.specialization,
+      department: flow.department,
+      date: flow.date,
+      reason: (flow.problem || "").trim(),
+      consultationFee: flow.doctor.consultationFee || 0,
+    };
 
-        if (res.data.status === "completed") {
-          stopPolling();
-          const appt = res.data.appointment;
+    // localStorage (not sessionStorage) so the new tab we're about to open
+    // can read it — sessionStorage doesn't carry over across tabs.
+    localStorage.setItem("pendingBooking", JSON.stringify(booking));
 
-          // Safety net: the backend should never send "completed" without an
-          // appointment attached, but if it ever does, don't lie to the user
-          // with a "success" message that has a broken doctor name / token.
-          if (!appt) {
-            addBotMessage(
-              "Payment confirmed, but something went wrong finalizing your appointment. Please contact support with your payment reference."
-            );
-            resetFlow();
-            return;
-          }
+    // No "noopener" — PaymentSuccess/PaymentFailure need window.opener to
+    // post the result back to this tab. Both pages are our own, so that's safe.
+    const tab = window.open("/appointment/payment", "_blank");
+    paymentTabRef.current = tab;
+    paymentResolvedRef.current = false;
 
-          const doctorName = appt?.doctorId?.userId?.name || flow.doctor.userId?.name;
-          addBotMessage(
-            `✅ Payment received! Appointment booked with Dr. ${doctorName} on ${new Date(
-              flow.date
-            ).toLocaleDateString()}. Your token number is #${appt.tokenNumber}.`
-          );
-          resetFlow();
-        } else if (res.data.status === "payment_ok_booking_failed") {
-          stopPolling();
-          addBotMessage(
-            "Your payment went through, but that slot couldn't be confirmed (it may have just filled up, or the doctor isn't available that day). Please contact support — you'll be refunded or rebooked."
-          );
-          resetFlow();
-        } else if (res.data.status === "failed") {
-          stopPolling();
-          addBotMessage("Payment failed or was cancelled. Would you like to try again?");
-          setStep("confirm");
-        }
-        // if still "pending", keep polling
-      } catch (err) {
-        // transient error — keep polling silently
+    addBotMessage(
+      `A payment tab has opened for NPR ${booking.consultationFee}. Complete it there — I'll pick it up here as soon as it's done.`
+    );
+    setStep("awaitingPayment");
+
+    stopWatchingPaymentTab();
+    watchIntervalRef.current = setInterval(() => {
+      if (paymentResolvedRef.current) {
+        stopWatchingPaymentTab();
+        return;
       }
-    }, 3000);
+      if (paymentTabRef.current && paymentTabRef.current.closed) {
+        stopWatchingPaymentTab();
+        addBotMessage(
+          "Looks like the payment tab was closed before finishing. If you completed the payment, hang tight — otherwise you can try again below."
+        );
+        setStep("confirm");
+      }
+    }, 1000);
+  };
+
+  const reopenPaymentTab = () => {
+    addUserMessage("Reopen payment tab");
+    const tab = window.open("/appointment/payment", "_blank");
+    paymentTabRef.current = tab;
   };
 
   const cancelFlow = () => {
@@ -400,14 +460,6 @@ const AiChatboat = () => {
               </p>
             )}
 
-            {step === "doctor" && !loading && flow.department && (
-              <div className="flex justify-start">
-                <button onClick={showAllDepartments} className="text-xs text-gray-400 underline">
-                  Not the right department? Show all
-                </button>
-              </div>
-            )}
-
             {step === "department" && !loading && (
               <div className="flex flex-wrap gap-2">
                 {departments.map((dept) => (
@@ -423,35 +475,76 @@ const AiChatboat = () => {
               </div>
             )}
 
-            {step === "doctor" && !loading && (
-              <div className="flex flex-col gap-2">
-                {filteredDoctors.map((doc) => (
-                  <button
-                    key={doc._id}
-                    onClick={() => pickDoctor(doc)}
-                    className="text-left px-3 py-2 rounded-lg text-xs border border-gray-200 hover:border-[#0F6E56]"
-                  >
-                    <span className="font-medium">Dr. {doc.userId?.name || "Unknown"}</span>
-                    <br />
-                    <span className="text-gray-500">
-                      {doc.specialization} · NPR {doc.consultationFee || 0}
-                    </span>
-                  </button>
-                ))}
-                <button onClick={cancelFlow} className="text-xs text-gray-400 underline self-start">
-                  Cancel
-                </button>
-              </div>
-            )}
-
             {step === "date" && !loading && (
               <div className="flex flex-col gap-2">
                 <input
                   type="date"
                   min={new Date().toISOString().split("T")[0]}
                   className="border rounded-lg px-3 py-2 text-sm outline-none"
-                  onChange={(e) => submitDate(e.target.value)}
+                  onChange={(e) => submitDeptDate(e.target.value)}
                 />
+                <button onClick={cancelFlow} className="text-xs text-gray-400 underline self-start">
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {step === "doctor" && !loading && (
+              <div className="flex flex-col gap-2">
+                {flow.department && (
+                  <button onClick={showAllDepartments} className="text-xs text-gray-400 underline self-start">
+                    Not the right department? Show all
+                  </button>
+                )}
+
+                {filteredDoctors.length === 0 && (
+                  <p className="text-xs text-gray-400">
+                    No doctors found in this department for that date.
+                  </p>
+                )}
+
+                {filteredDoctors.map(({ doctor, bookedCount, capacity, full, nextToken }) => (
+                  <button
+                    key={doctor._id}
+                    onClick={() => pickDoctor({ doctor, bookedCount, capacity, full, nextToken })}
+                    disabled={full === true}
+                    className="text-left px-3 py-2 rounded-lg text-xs border border-gray-200 hover:border-[#0F6E56] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-200"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-medium">Dr. {doctor.userId?.name || "Unknown"}</span>
+                        <br />
+                        <span className="text-gray-500">
+                          {doctor.specialization} · NPR {doctor.consultationFee || 0}
+                        </span>
+                      </div>
+
+                      {full === true && (
+                        <span className="text-[10px] font-semibold bg-red-50 text-red-500 rounded-full px-2 py-1 whitespace-nowrap">
+                          Full
+                        </span>
+                      )}
+                      {full === false && (
+                        <span className="text-[10px] font-semibold bg-[#E1F5EE] text-[#0F6E56] rounded-full px-2 py-1 whitespace-nowrap">
+                          Available
+                        </span>
+                      )}
+                      {full === null && (
+                        <span className="text-[10px] font-semibold bg-gray-50 text-gray-400 rounded-full px-2 py-1 whitespace-nowrap">
+                          Unknown
+                        </span>
+                      )}
+                    </div>
+
+                    {capacity !== null && (
+                      <p className="text-gray-400 mt-1">
+                        {bookedCount}/{capacity} booked
+                        {!full && nextToken ? ` · next token #${nextToken}` : ""}
+                      </p>
+                    )}
+                  </button>
+                ))}
+
                 <button onClick={cancelFlow} className="text-xs text-gray-400 underline self-start">
                   Cancel
                 </button>
@@ -490,7 +583,7 @@ const AiChatboat = () => {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={proceedToPayment}
+                    onClick={handleBookAndPay}
                     className="flex-1 px-3 py-2 rounded-lg text-xs text-white"
                     style={{ background: BRAND }}
                   >
@@ -506,29 +599,30 @@ const AiChatboat = () => {
               </div>
             )}
 
-            {step === "payment" && payment && (
-              <div className="flex flex-col items-center gap-3">
-                <div className="bg-white p-2 border border-gray-200 rounded-lg">
-                  <QRCode value={payment.paymentPageUrl} size={140} />
+            {step === "awaitingPayment" && !loading && (
+              <div className="flex flex-col gap-2">
+                <div className="text-xs bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                  <p className="text-gray-500">Amount due</p>
+                  <p className="text-lg font-semibold" style={{ color: BRAND }}>
+                    NPR {flow.doctor?.consultationFee || 0}
+                  </p>
                 </div>
-                <a
-                  href={payment.paymentPageUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs underline"
-                  style={{ color: BRAND }}
-                >
-                  Or pay on this device
-                </a>
-                <p className="text-xs text-gray-400 flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  Waiting for payment…
+                <p className="text-xs text-gray-400 text-center animate-pulse">
+                  Waiting for payment to complete in the other tab…
                 </p>
-                <button onClick={cancelFlow} className="text-xs text-gray-400 underline">
+                <button
+                  onClick={reopenPaymentTab}
+                  className="text-center px-3 py-2 rounded-lg text-xs text-white"
+                  style={{ background: BRAND }}
+                >
+                  Reopen payment tab
+                </button>
+                <button onClick={cancelFlow} className="text-xs text-gray-400 underline self-start">
                   Cancel
                 </button>
               </div>
             )}
+
           </div>
 
           <div className="p-3 border-t flex gap-2">

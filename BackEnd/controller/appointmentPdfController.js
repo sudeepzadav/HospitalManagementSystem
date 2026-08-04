@@ -14,9 +14,7 @@ async function generateAppointmentPdf(req, res) {
       return res.status(404).json({ message: "Appointment not found." });
     }
  
-    // Only the account that made the booking can download its PDF.
-    // appointment.patientId is a Patient profile _id, which links back to
-    // the User account via its own userId field — compare against that.
+    
     const requesterId = req.user?._id || req.user?.id;
     const bookingUserId = appointment.patientId?.userId;
     if (!bookingUserId || String(bookingUserId) !== String(requesterId)) {

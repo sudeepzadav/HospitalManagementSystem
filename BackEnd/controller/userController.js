@@ -13,11 +13,6 @@ const {
 const { sendVerificationEmail } = require("../utils/sendEmail");
 
 // Verify Email
-//
-// FIXED: this still checked `if (!user)` without ever fetching the user
-// from the database first — `user` was undefined, so this threw
-// "ReferenceError: user is not defined" on every single verification
-// attempt. Added the missing User.findById(decoded.id) lookup.
 async function verifyEmail(req, res) {
   try {
     const { token } = req.params;
@@ -71,7 +66,7 @@ const registerUser = async (req, res) => {
     const existingUser = await User.findOne({ email });
 
     if (existingUser) {
-      // Generic message avoids confirming whether the email is already registered
+      
       return res.status(400).json({
         success: false,
         message: "Unable to register with this email",
@@ -139,7 +134,7 @@ const loginUser = async (req, res) => {
       });
     }
 
-    // Block login until the email is verified, and resend the verification email
+    
     if (!user.verify) {
       const verificationToken = generateVerificationToken({
         id: user._id,
@@ -153,10 +148,7 @@ const loginUser = async (req, res) => {
       });
     }
 
-    // Every role except "patient" must be approved by an admin before they
-    // can log in. Checked after email verification, so someone always sees
-    // "verify your email" first if both are outstanding, rather than a
-    // confusing "pending approval" message before they've even proven the
+    
     // email is theirs.
     if (user.role !== "patient" && user.approvalStatus !== "approved") {
       if (user.approvalStatus === "rejected") {
@@ -254,8 +246,7 @@ const updateUser = async (req, res) => {
       });
     }
 
-    // Explicit allow-list — never spread req.body directly into the update.
-    // This blocks mass-assignment of role, password, verify, etc.
+    
     const { name, email, phone, password } = req.body;
     const updateData = {};
     if (name) updateData.name = name;
@@ -285,7 +276,7 @@ const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // self-or-admin authorization check
+    
     if (req.user.id !== id && req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
