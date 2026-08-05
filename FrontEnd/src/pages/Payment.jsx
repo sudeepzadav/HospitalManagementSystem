@@ -20,7 +20,10 @@ const Payment = () => {
   const [esewaFields, setEsewaFields] = useState(null);
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("pendingBooking");
+    // localStorage, not sessionStorage — this page can be opened in its
+    // own tab (e.g. from the AI chatbot), which can't see the sessionStorage
+    // of the tab that started the booking.
+    const stored = localStorage.getItem("pendingBooking");
     if (!stored) {
       // Nothing to pay for — send them back to search.
       navigate("/appointment");

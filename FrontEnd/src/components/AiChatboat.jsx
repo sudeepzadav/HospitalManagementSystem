@@ -4,18 +4,13 @@ import { SYMPTOM_KEYWORDS } from "../constant/symptommatcher";
 
 const BRAND = "#0F6E56";
 
-// Steps: idle -> patientInfo -> problem -> department -> date -> doctor -> confirm -> awaitingPayment -> done
-// eSewa requires a real signed form POST + redirect, which can't happen
-// invisibly inside this widget. Instead we open /appointment/payment in a
-// background tab and keep chatting — PaymentSuccess/PaymentFailure post a
-// message back to this tab (window.opener) the moment payment resolves.
 const AiChatboat = () => {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([
     {
       sender: "bot",
-      text: "Hello 👋 I'm your healthcare assistant. Tell me what's going on and I'll help you book an appointment.",
+      text: "Hello 👋 I'm your healthcare assistant. Ask me about doctors, hospital hours, or a health concern — or book an appointment directly.",
     },
   ]);
 
@@ -25,7 +20,7 @@ const AiChatboat = () => {
   const [doctors, setDoctors] = useState([]);
   const [departments, setDepartments] = useState([]);
 
-  // Array of { doctor, bookedCount, capacity, full, nextToken } once a date has been picked
+  
   const [filteredDoctors, setFilteredDoctors] = useState([]);
 
   const [flow, setFlow] = useState({
@@ -89,8 +84,16 @@ const AiChatboat = () => {
       ...prev,
       patientDetails: { name: name.trim(), age: Number(age), gender },
     }));
-    addBotMessage("Thanks! Now, what's the problem or symptom you're dealing with?");
-    setStep("problem");
+
+    if (flow.doctor) {
+      addBotMessage(
+        `Thanks! What date would you like to see Dr. ${flow.doctor.userId?.name || "the doctor"}?`
+      );
+      setStep("doctorDate");
+    } else {
+      addBotMessage("Thanks! Now, what's the problem or symptom you're dealing with?");
+      setStep("problem");
+    }
   };
 
   const submitProblem = async (text) => {
@@ -147,9 +150,7 @@ const AiChatboat = () => {
     addUserMessage(dept);
     setFlow((prev) => ({ ...prev, department: dept }));
 
-    // If we already have a date from a previous attempt (e.g. user switched
-    // departments after seeing the doctor list), reuse it and go straight
-    // to fetching availability instead of asking again.
+    
     if (flow.date) {
       fetchDoctorsWithStatus(dept, flow.date);
     } else {
@@ -158,9 +159,7 @@ const AiChatboat = () => {
     }
   };
 
-  // Mirrors the manual Appointment page: fetch every doctor in the
-  // department, then check queue-status for each on the chosen date so we
-  // can show live Available/Full badges before the user picks anyone.
+
   const fetchDoctorsWithStatus = async (dept, dateValue) => {
     setLoading(true);
     try {
@@ -231,12 +230,62 @@ const AiChatboat = () => {
     setStep("confirm");
   };
 
-  // ======================
-  // Payment — a signed eSewa form POST has to be a real page navigation,
-  // so we open /appointment/payment in its own tab and keep the widget
-  // open here. PaymentSuccess/PaymentFailure post a message back to this
-  // tab (their window.opener) the moment payment resolves.
-  // ======================
+
+  const pickDoctorFromLookup = (doctor) => {
+    const doctorName = doctor.userId?.name || "Unknown";
+    addUserMessage(`Book with Dr. ${doctorName}`);
+    setFlow((prev) => ({ ...prev, doctor, department: doctor.department }));
+
+    if (flow.patientDetails.name) {
+      addBotMessage(`Got it — what date would you like to see Dr. ${doctorName}?`);
+      setStep("doctorDate");
+    } else {
+      addBotMessage("Great — first, who is this appointment for? Please share their name, age, and gender.");
+      setStep("patientInfo");
+    }
+  };
+
+  const submitSingleDoctorDate = async (dateValue) => {
+    if (!dateValue || !flow.doctor) return;
+
+    addUserMessage(
+      new Date(dateValue).toLocaleDateString(undefined, {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    );
+    setLoading(true);
+
+    try {
+      const res = await api.get("/appointments/queue-status", {
+        params: { doctorId: flow.doctor._id, date: dateValue },
+      });
+
+      const { bookedCount, capacity, full, nextToken } = res.data;
+      const doctorName = flow.doctor.userId?.name || "the doctor";
+
+      if (full) {
+        addBotMessage(
+          `Dr. ${doctorName} is fully booked on that day (${bookedCount}/${capacity}). Please pick another date.`
+        );
+        setStep("doctorDate");
+      } else {
+        setFlow((prev) => ({ ...prev, date: dateValue, bookedCount, capacity, nextToken }));
+        addBotMessage(
+          `${bookedCount}/${capacity} booked for that day. You'd be token #${nextToken}. Please confirm below:`
+        );
+        setStep("confirm");
+      }
+    } catch (err) {
+      addBotMessage("Sorry, I couldn't check that doctor's schedule. Please try another date.");
+      setStep("doctorDate");
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   useEffect(() => {
     function handlePaymentMessage(event) {
@@ -292,12 +341,10 @@ const AiChatboat = () => {
       consultationFee: flow.doctor.consultationFee || 0,
     };
 
-    // localStorage (not sessionStorage) so the new tab we're about to open
-    // can read it — sessionStorage doesn't carry over across tabs.
+  
     localStorage.setItem("pendingBooking", JSON.stringify(booking));
 
-    // No "noopener" — PaymentSuccess/PaymentFailure need window.opener to
-    // post the result back to this tab. Both pages are our own, so that's safe.
+    
     const tab = window.open("/appointment/payment", "_blank");
     paymentTabRef.current = tab;
     paymentResolvedRef.current = false;
@@ -335,12 +382,50 @@ const AiChatboat = () => {
     resetFlow();
   };
 
+  
+  const askAssistant = async (text) => {
+    addUserMessage(text);
+    setLoading(true);
+
+    try {
+      const res = await api.post("/chatbot/message", { message: text });
+      const data = res.data;
+
+      if (data.type === "start_booking") {
+        addBotMessage("Sure — who is this appointment for? Please share their name, age, and gender.");
+        setStep("patientInfo");
+      } else if (data.type === "doctors") {
+        if (!data.doctors || data.doctors.length === 0) {
+          addBotMessage(
+            `I couldn't find any doctors matching "${data.query}". Try a different specialty or department, or tap "Book an appointment" to browse all departments.`
+          );
+        } else {
+          setMessages((prev) => [...prev, { sender: "bot", type: "doctors", doctors: data.doctors }]);
+        }
+      } else {
+        addBotMessage(data.reply || "Sorry, I didn't quite catch that.");
+      }
+    } catch (err) {
+      addBotMessage(
+        "Sorry, I'm having trouble answering right now. You can still book using the button below."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const sendMessage = () => {
     const text = message.trim();
     if (!text) return;
 
     if (step === "problem") {
       submitProblem(text);
+      setMessage("");
+      return;
+    }
+
+    if (step === "idle") {
+      askAssistant(text);
       setMessage("");
       return;
     }
@@ -375,14 +460,32 @@ const AiChatboat = () => {
                 key={index}
                 className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
               >
-                <div
-                  className={`px-3 py-2 rounded-xl text-sm max-w-[75%] whitespace-pre-line ${
-                    msg.sender === "user" ? "text-white" : "bg-gray-100 text-gray-700"
-                  }`}
-                  style={msg.sender === "user" ? { background: BRAND } : undefined}
-                >
-                  {msg.text}
-                </div>
+                {msg.type === "doctors" ? (
+                  <div className="flex flex-col gap-2 max-w-[85%]">
+                    {msg.doctors.map((doctor) => (
+                      <button
+                        key={doctor._id}
+                        onClick={() => pickDoctorFromLookup(doctor)}
+                        className="text-left px-3 py-2 rounded-lg text-xs border border-gray-200 bg-white hover:border-[#0F6E56]"
+                      >
+                        <span className="font-medium">Dr. {doctor.userId?.name || "Unknown"}</span>
+                        <br />
+                        <span className="text-gray-500">
+                          {doctor.specialization} · {doctor.department} · NPR {doctor.consultationFee || 0}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className={`px-3 py-2 rounded-xl text-sm max-w-[75%] whitespace-pre-line ${
+                      msg.sender === "user" ? "text-white" : "bg-gray-100 text-gray-700"
+                    }`}
+                    style={msg.sender === "user" ? { background: BRAND } : undefined}
+                  >
+                    {msg.text}
+                  </div>
+                )}
               </div>
             ))}
 
@@ -482,6 +585,20 @@ const AiChatboat = () => {
                   min={new Date().toISOString().split("T")[0]}
                   className="border rounded-lg px-3 py-2 text-sm outline-none"
                   onChange={(e) => submitDeptDate(e.target.value)}
+                />
+                <button onClick={cancelFlow} className="text-xs text-gray-400 underline self-start">
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {step === "doctorDate" && !loading && (
+              <div className="flex flex-col gap-2">
+                <input
+                  type="date"
+                  min={new Date().toISOString().split("T")[0]}
+                  className="border rounded-lg px-3 py-2 text-sm outline-none"
+                  onChange={(e) => submitSingleDoctorDate(e.target.value)}
                 />
                 <button onClick={cancelFlow} className="text-xs text-gray-400 underline self-start">
                   Cancel
@@ -632,7 +749,13 @@ const AiChatboat = () => {
               onKeyDown={(e) => {
                 if (e.key === "Enter") sendMessage();
               }}
-              placeholder={step === "problem" ? "e.g. I have chest pain..." : "Ask about appointments..."}
+              placeholder={
+                step === "problem"
+                  ? "e.g. I have chest pain..."
+                  : step === "idle"
+                  ? "Ask a question or find a doctor..."
+                  : "Ask about appointments..."
+              }
               className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none"
             />
             <button

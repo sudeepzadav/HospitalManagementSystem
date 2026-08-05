@@ -65,7 +65,7 @@ const ProfilePage = () => {
   const [form, setForm] = useState({ name: "", email: "", phone: "" });
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState(null); // "success" | "error" | null
+  const [saveStatus, setSaveStatus] = useState(null); 
   const [saveMessage, setSaveMessage] = useState("");
 
   const [uploading, setUploading] = useState(false);
@@ -125,8 +125,7 @@ const ProfilePage = () => {
       const updated = res.data?.user || res.data;
       setProfile(updated);
 
-      // Keep Navbar and everywhere else that reads the logged-in user
-      // in sync immediately, without needing a refresh.
+      
       updateUser({
         name: updated.name,
         email: updated.email,
@@ -182,8 +181,7 @@ const ProfilePage = () => {
 
       setProfile((p) => ({ ...p, profileImage: res.data.profileImage }));
 
-      // Push the new picture into context so the Navbar (and anywhere
-      // else showing the avatar) updates immediately, no refresh needed.
+      
       updateUser({ profileImage: res.data.profileImage });
     } catch (err) {
       setUploadError(

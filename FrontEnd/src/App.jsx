@@ -19,6 +19,7 @@ import DoctorsProfile from "./pages/DoctorsProfile";
 import UserDashboard from "./components/Dashboard/UserDashboard";
 import AdminDashboard from "./components/Dashboard/AdminDashboard";
 import DoctorDashboard from "./components/Dashboard/DoctorDashboard";
+import ProfilePage from "./components/Profile";
 
 const App = () => {
   const location = useLocation();
@@ -55,6 +56,7 @@ const App = () => {
           <Route path="/user-dashboard" element={<UserDashboard />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Routes>
 
         {!hideNavbarAndFooter && (

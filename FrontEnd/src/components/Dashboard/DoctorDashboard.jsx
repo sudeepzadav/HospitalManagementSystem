@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../../api/axios";
 import {
   FaCalendarAlt,
   FaUserCircle,
   FaClock,
   FaStethoscope,
+  FaUserEdit,
 } from "react-icons/fa";
 
 const INK = "#122A2A";
@@ -17,6 +19,13 @@ const BRAND_SOFT = "#E4F1EF";
 const AMBER = "#B8860B";
 const AMBER_SOFT = "#FDF6E8";
 const DANGER = "#D64545";
+
+
+const SERVER_ORIGIN = (api.defaults.baseURL || "").replace(/\/api\/?$/, "");
+function imageUrl(path) {
+  if (!path) return null;
+  return `${SERVER_ORIGIN}${path}`;
+}
 
 function formatDate(d) {
   if (!d) return "—";
@@ -63,10 +72,6 @@ function EmptyState({ icon: Icon, title, subtitle }) {
   );
 }
 
-// Today's queue row — this is the doctor's main working view, so it gets
-// the most actionable treatment: patient details up front, plus one-tap
-// status buttons instead of a dropdown, since these get used constantly
-// through a clinic day.
 function QueueRow({ appt, onUpdateStatus, updating }) {
   const patientName = appt.patientDetails?.name || appt.patientId?.userId?.name || "Unknown";
 
@@ -162,6 +167,7 @@ const TABS = [
 ];
 
 const DoctorDashboard = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("today");
 
   const [doctor, setDoctor] = useState(null);
@@ -203,27 +209,49 @@ const DoctorDashboard = () => {
   }
 
   const doctorName = doctor?.userId?.name;
+  const doctorPhoto = doctor?.userId?.profileImage;
   const activeTodayCount = today.filter((a) => ["pending", "confirmed"].includes(a.status)).length;
 
   return (
     <div className="min-h-screen" style={{ background: SURFACE }}>
       <div className="max-w-5xl mx-auto px-6 pt-24 pb-16">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center text-white shrink-0"
-            style={{ background: BRAND }}
+        <div className="flex items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate("/profile")}
+              title="Edit your profile"
+              className="w-12 h-12 rounded-full flex items-center justify-center text-white shrink-0 overflow-hidden hover:opacity-90 transition-opacity"
+              style={{ background: BRAND }}
+            >
+              {doctorPhoto ? (
+                <img
+                  src={imageUrl(doctorPhoto)}
+                  alt={doctorName ? `Dr. ${doctorName}` : "Profile"}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <FaStethoscope size={18} />
+              )}
+            </button>
+            <div>
+              <h1 className="text-2xl font-semibold" style={{ color: INK }}>
+                {doctorName ? `Dr. ${doctorName}` : "Doctor Dashboard"}
+              </h1>
+              <p className="text-sm" style={{ color: MUTED }}>
+                {doctor?.department || "Your schedule and patient queue."}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => navigate("/profile")}
+            className="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold rounded-lg px-3.5 py-2 border transition-colors"
+            style={{ borderColor: BORDER, color: MUTED }}
           >
-            <FaStethoscope size={18} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold" style={{ color: INK }}>
-              {doctorName ? `Dr. ${doctorName}` : "Doctor Dashboard"}
-            </h1>
-            <p className="text-sm" style={{ color: MUTED }}>
-              {doctor?.department || "Your schedule and patient queue."}
-            </p>
-          </div>
+            <FaUserEdit size={13} />
+            Edit profile
+          </button>
         </div>
 
         {error && (

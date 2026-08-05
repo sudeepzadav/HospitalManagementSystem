@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-
 const doctorSchema = new mongoose.Schema(
   {
     userId: {
@@ -11,17 +10,20 @@ const doctorSchema = new mongoose.Schema(
 
     specialization: {
       type: String,
-      required: true
+      required: true,
+      trim: true
     },
 
     department: {
       type: String,
-      required: true
+      required: true,
+      trim: true
     },
 
     qualification: [
       {
-        type: String
+        type: String,
+        trim: true
       }
     ],
 
@@ -32,7 +34,8 @@ const doctorSchema = new mongoose.Schema(
 
     licenseNumber: {
       type: String,
-      unique: true
+      unique: true,
+      trim: true
     },
 
     consultationFee: {
@@ -43,7 +46,8 @@ const doctorSchema = new mongoose.Schema(
     availability: [
       {
         day: {
-          type: String
+          type: String,
+          trim: true
         },
 
         startTime: {
@@ -60,12 +64,10 @@ const doctorSchema = new mongoose.Schema(
       type: Number,
       default: 0
     }
-
   },
   {
     timestamps: true
   }
 );
-
 
 module.exports = mongoose.model("Doctor", doctorSchema);

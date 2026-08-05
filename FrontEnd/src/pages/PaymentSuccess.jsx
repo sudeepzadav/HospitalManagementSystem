@@ -6,9 +6,24 @@ const PaymentSuccess = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [status, setStatus] = useState("verifying"); 
+  const [status, setStatus] = useState("verifying");
   const [appointment, setAppointment] = useState(null);
   const [downloading, setDownloading] = useState(false);
+
+  
+  const hasOpener = typeof window !== "undefined" && !!window.opener;
+
+  function notifyOpener(payload) {
+    if (!hasOpener) return;
+    try {
+      window.opener.postMessage(
+        { type: "appointment-payment-result", ...payload },
+        window.location.origin
+      );
+    } catch (err) {
+      
+    }
+  }
 
   async function handleDownloadPdf() {
     if (!appointment?.appointmentId) return;
@@ -37,12 +52,12 @@ const PaymentSuccess = () => {
 
   useEffect(() => {
     async function confirm() {
-      // eSewa appends a base64-encoded `data` query param to success_url.
       const data = searchParams.get("data");
-      const stored = sessionStorage.getItem("pendingBooking");
+      const stored = localStorage.getItem("pendingBooking");
 
       if (!data || !stored) {
         setStatus("error");
+        notifyOpener({ status: "error" });
         return;
       }
 
@@ -58,13 +73,16 @@ const PaymentSuccess = () => {
 
         setAppointment(res.data);
         setStatus("confirmed");
-        sessionStorage.removeItem("pendingBooking");
+        localStorage.removeItem("pendingBooking");
+        notifyOpener({ status: "confirmed", appointment: res.data });
       } catch (err) {
         setStatus("error");
+        notifyOpener({ status: "error" });
       }
     }
 
     confirm();
+   
   }, [searchParams]);
 
   return (
@@ -129,12 +147,18 @@ const PaymentSuccess = () => {
             {downloading ? "Preparing PDF…" : "Download appointment PDF"}
           </button>
 
-          <button
-            onClick={() => navigate("/")}
-            className="mt-3 w-full border border-[#DDE6E2] text-[#12312B] rounded-lg px-5 py-3 text-sm font-semibold hover:bg-[#F5F8F6]"
-          >
-            Done
-          </button>
+          {hasOpener ? (
+            <p className="mt-4 text-xs text-[#4A6B62]">
+              You can close this tab now — the assistant already has your confirmation.
+            </p>
+          ) : (
+            <button
+              onClick={() => navigate("/")}
+              className="mt-3 w-full border border-[#DDE6E2] text-[#12312B] rounded-lg px-5 py-3 text-sm font-semibold hover:bg-[#F5F8F6]"
+            >
+              Done
+            </button>
+          )}
         </>
       )}
     </div>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 
-// Status states: "verifying" | "success" | "error" | "already"
+
 export default function VerifyEmail() {
   const { token } = useParams();
   const navigate = useNavigate();
@@ -47,7 +47,7 @@ export default function VerifyEmail() {
     };
   }, [token]);
 
-  // Auto-redirect to home 3 seconds after successful verification
+  
   useEffect(() => {
     if (status === "success") {
       const timer = setTimeout(() => {

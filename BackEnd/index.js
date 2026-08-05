@@ -56,6 +56,8 @@ app.use("/api/appointments", require("./router/appointmentRouter"));
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+app.use("/api/chatbot", require("./router/chatboatRouter"));
+
 app.use(
   "/api/medical-records",
   require("./router/medicalrecordRouter")

@@ -1,8 +1,23 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const PaymentFailure = () => {
   const navigate = useNavigate();
+
+  const hasOpener = typeof window !== "undefined" && !!window.opener;
+
+  useEffect(() => {
+    if (!hasOpener) return;
+    try {
+      window.opener.postMessage(
+        { type: "appointment-payment-result", status: "failed" },
+        window.location.origin
+      );
+    } catch (err) {
+      
+    }
+    
+  }, []);
 
   return (
     <div className="max-w-xl mx-auto mt-24 px-6 pb-20 text-center">
@@ -24,6 +39,12 @@ const PaymentFailure = () => {
       >
         Try payment again
       </button>
+
+      {hasOpener && (
+        <p className="mt-4 text-xs text-[#4A6B62]">
+          The assistant tab has been notified — you can also close this tab and try again from there.
+        </p>
+      )}
     </div>
   );
 };

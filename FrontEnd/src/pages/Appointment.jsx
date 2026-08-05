@@ -95,8 +95,8 @@ const Appointment = () => {
       consultationFee: doctor.consultationFee || 0,
     };
 
-    // Hand the booking details to the payment page. Cleared once the
-    sessionStorage.setItem("pendingBooking", JSON.stringify(booking));
+    
+    localStorage.setItem("pendingBooking", JSON.stringify(booking));
     navigate("/appointment/payment");
   }
 

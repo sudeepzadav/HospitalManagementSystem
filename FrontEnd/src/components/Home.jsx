@@ -4,6 +4,7 @@ import { stats } from "../constant/stats";
 import heroSection from "../assets/image/heroSection.jpg";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
+const API_ROOT = (api.defaults.baseURL || "").replace(/\/api\/?$/, "");
 
 export default function Home() {
   const [dept, setDept] = useState("");
@@ -38,7 +39,7 @@ export default function Home() {
     };
   }, []);
 
-  // Homepage only teases a few — the full roster lives on /doctors.
+  
   const featuredDoctors = doctors.slice(0, 4);
 
   function handleSearch(e) {
@@ -70,8 +71,9 @@ export default function Home() {
           </p>
 
           <button
-          onClick={()=> navigate("/appointment")}
-           className="mt-6 bg-white text-blue-700 px-6 py-3 rounded-lg font-semibold hover:bg-blue-100">
+            onClick={() => navigate("/appointment")}
+            className="mt-6 bg-white text-blue-700 px-6 py-3 rounded-lg font-semibold hover:bg-blue-100"
+          >
             Book an Appointment
           </button>
         </div>
@@ -103,7 +105,9 @@ export default function Home() {
         )}
 
         {!loadingDoctors && doctorsError && (
-          <p className="text-sm text-red-500 py-8 text-center">{doctorsError}</p>
+          <p className="text-sm text-red-500 py-8 text-center">
+            {doctorsError}
+          </p>
         )}
 
         {!loadingDoctors && !doctorsError && (
@@ -115,8 +119,18 @@ export default function Home() {
                   key={doc._id}
                   className="border border-[#DDE6E2] rounded-2xl p-6 text-center"
                 >
-                  <div className="w-16 h-16 rounded-full bg-[#E1F5EE] mx-auto mb-4 flex items-center justify-center text-[#0F6E56] font-semibold text-lg">
-                    {name.split(" ").slice(-1)[0][0]}
+                  <div className="w-16 h-16 rounded-full bg-[#E1F5EE] mx-auto mb-4 flex items-center justify-center overflow-hidden text-[#0F6E56] font-semibold text-lg">
+                    {doc.userId?.profileImage ? (
+                      <img
+                        src={`${API_ROOT}${doc.userId.profileImage}`}
+                        alt={`Dr. ${name}`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span>
+                        {name.split(" ").slice(-1)[0][0].toUpperCase()}
+                      </span>
+                    )}
                   </div>
                   <h3 className="text-sm font-semibold mb-0.5">Dr. {name}</h3>
                   <p className="text-sm text-[#0F6E56] mb-0.5">
