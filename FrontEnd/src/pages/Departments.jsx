@@ -1,10 +1,16 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { ArrowUpRight, Users } from "lucide-react";
 import { departments } from "../constant/departments";
 
 const Departments = () => {
+  const navigate = useNavigate();
   const featured = departments.find((d) => d.featured);
   const rest = departments.filter((d) => !d.featured);
+
+  const goToDoctors = (deptName) => {
+    navigate(`/doctors?department=${encodeURIComponent(deptName)}`);
+  };
 
   return (
     <div>
@@ -58,9 +64,10 @@ const Departments = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {/* Featured department — spans two columns on larger screens */}
           {featured && (
-            <a
-              href="#"
-              className="group relative sm:col-span-2 rounded-2xl p-7 overflow-hidden bg-[#0C5744] text-white transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0F6E56]"
+            <button
+              type="button"
+              onClick={() => goToDoctors(featured.name)}
+              className="group relative sm:col-span-2 rounded-2xl p-7 overflow-hidden bg-[#0C5744] text-white transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0F6E56] text-left"
             >
               {/* decorative icon pattern */}
               <featured.icon
@@ -107,15 +114,16 @@ const Departments = () => {
                   </span>
                 </div>
               </div>
-            </a>
+            </button>
           )}
 
           {/* Standard department cards */}
           {rest.map((d) => (
-            <a
-              href="#"
+            <button
+              type="button"
               key={d.name}
-              className="group border border-[#DDE6E2] rounded-2xl p-6 bg-white transition-all duration-200 hover:border-[#0F6E56] hover:shadow-[0_8px_24px_-12px_rgba(15,110,86,0.25)] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0F6E56]"
+              onClick={() => goToDoctors(d.name)}
+              className="group border border-[#DDE6E2] rounded-2xl p-6 bg-white transition-all duration-200 hover:border-[#0F6E56] hover:shadow-[0_8px_24px_-12px_rgba(15,110,86,0.25)] hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0F6E56] text-left w-full"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="w-10 h-10 rounded-lg bg-[#E1F5EE] flex items-center justify-center">
@@ -141,7 +149,7 @@ const Departments = () => {
                   {d.availability}
                 </span>
               </div>
-            </a>
+            </button>
           ))}
         </div>
       </section>

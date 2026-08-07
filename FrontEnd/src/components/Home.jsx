@@ -136,9 +136,16 @@ export default function Home() {
                   <p className="text-sm text-[#0F6E56] mb-0.5">
                     {doc.specialization}
                   </p>
-                  <p className="text-xs text-[#4A6B62]">
+                  <p className="text-xs text-[#4A6B62] mb-4">
                     {doc.experience || 0} yrs experience
                   </p>
+
+                  <button
+                    onClick={() => navigate(`/appointment?doctorId=${doc._id}`)}
+                    className="w-full text-sm font-semibold text-white rounded-lg px-3 py-2 bg-[#0F6E56] hover:bg-[#0C5744] transition-colors"
+                  >
+                    Book appointment
+                  </button>
                 </div>
               );
             })}

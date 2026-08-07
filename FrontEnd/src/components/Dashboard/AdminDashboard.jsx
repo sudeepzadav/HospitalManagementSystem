@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import api from "../../api/axios";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import JobPostings from "../JobPostings";
 
 const BRAND = "#0F6E56";
 const BRAND_SOFT = "#E1F5EE";
@@ -58,6 +59,7 @@ const TABS = [
   { key: "patients", label: "Patients" },
   { key: "approvals", label: "Approvals" },
   { key: "issues", label: "Payment Issues" },
+  { key: "jobs", label: "Jobs" },
 ];
 
 const AdminDashboard = () => {
@@ -218,12 +220,12 @@ const AdminDashboard = () => {
   const cancelledCount = appointments.filter((a) => a.status === "cancelled").length;
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-10">
+    <div className=" mx-auto px-6 py-10 mt-10">
       <h1 className="text-2xl font-semibold mb-1" style={{ color: INK }}>
         Admin Dashboard
       </h1>
       <p className="text-sm mb-8" style={{ color: MUTED }}>
-        Manage appointments, doctors, patients, and payment issues.
+        Manage appointments, doctors, patients, payment issues, and job postings.
       </p>
 
       {/* Tabs */}
@@ -663,6 +665,9 @@ const AdminDashboard = () => {
           ))}
         </div>
       )}
+
+      {/* Jobs */}
+      {activeTab === "jobs" && <JobPostings />}
     </div>
   );
 };

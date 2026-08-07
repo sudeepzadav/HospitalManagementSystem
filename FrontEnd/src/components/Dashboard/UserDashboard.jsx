@@ -322,7 +322,7 @@ const UserDashboard = () => {
         .brand-font { font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif; }
       `}</style>
 
-      <div className="max-w-5xl mx-auto px-6 pt-24 pb-16">
+      <div className="mx-auto px-6 pt-24 pb-16">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <div

@@ -90,7 +90,7 @@ export default function Footer({
   year = new Date().getFullYear(),
 }) {
   return (
-    <div className="bg-white">
+    <div className="bg-black">
       <div className="bg-[#12312B] text-white text-center text-[13px] tracking-wide py-2 px-4">
         Emergency department open 24/7 &nbsp;·&nbsp;
         <span className="text-[#8FD9BE] font-semibold">

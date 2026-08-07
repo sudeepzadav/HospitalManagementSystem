@@ -21,12 +21,7 @@ export const navLinks = [
   },
   {
     id: 5,
-    name: "Patient Portal",
-    href: "patient-portal",
-  },
-  {
-    id: 6,
-    name: "Pharmacy",
-    href: "pharmacy",
+    name: "Vacancy",
+    href: "careers",
   },
 ];

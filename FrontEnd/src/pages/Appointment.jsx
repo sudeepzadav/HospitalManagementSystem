@@ -1,10 +1,12 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { departments } from "../constant/departments";
 import api from "../api/axios";
 
 const Appointment = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preselectedDoctorId = searchParams.get("doctorId");
 
   const [patientName, setPatientName] = useState("");
   const [patientAge, setPatientAge] = useState("");
@@ -14,10 +16,48 @@ const Appointment = () => {
   const [dept, setDept] = useState("");
   const [date, setDate] = useState("");
 
+  // The doctor clicked from a doctor card (via ?doctorId=...), if any.
+  // Once set, this doctor is the ONLY one ever checked/booked — never
+  // substituted for someone else in the same department.
+  const [preselectedDoctor, setPreselectedDoctor] = useState(null);
+  const [loadingPreselected, setLoadingPreselected] = useState(!!preselectedDoctorId);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
   const [results, setResults] = useState([]); // [{ doctor, bookedCount, capacity, full, nextToken }]
+
+  useEffect(() => {
+    if (!preselectedDoctorId) return;
+
+    let cancelled = false;
+    async function loadPreselectedDoctor() {
+      setLoadingPreselected(true);
+      try {
+        const res = await api.get("/doctors");
+        const doctor = (res.data || []).find((d) => d._id === preselectedDoctorId);
+        if (!cancelled) {
+          if (doctor) {
+            setPreselectedDoctor(doctor);
+            setDept(doctor.department); // keep in sync even though the field is now locked
+          } else {
+            setError("That doctor couldn't be found — please search below instead.");
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError("Couldn't load that doctor — please search below instead.");
+        }
+      } finally {
+        if (!cancelled) setLoadingPreselected(false);
+      }
+    }
+
+    loadPreselectedDoctor();
+    return () => {
+      cancelled = true;
+    };
+  }, [preselectedDoctorId]);
 
   async function handleSearch(e) {
     e.preventDefault();
@@ -43,21 +83,25 @@ const Appointment = () => {
     setResults([]);
 
     try {
-      // 1. Get all doctors in the chosen department
-      const doctorsRes = await api.get("/doctors");
-      const doctorsInDept = (doctorsRes.data || []).filter(
-        (d) => d.department === dept
-      );
+      // If a doctor was pre-selected from their profile card, only ever
+      // check THEIR availability — never fall back to the full department
+      // list, even though we still know `dept` for display purposes.
+      let doctorsToCheck;
+      if (preselectedDoctor) {
+        doctorsToCheck = [preselectedDoctor];
+      } else {
+        const doctorsRes = await api.get("/doctors");
+        doctorsToCheck = (doctorsRes.data || []).filter((d) => d.department === dept);
+      }
 
-      if (doctorsInDept.length === 0) {
+      if (doctorsToCheck.length === 0) {
         setResults([]);
         setLoading(false);
         return;
       }
 
-      // 2. Check queue/slot status for each doctor on the chosen date
       const statusResults = await Promise.all(
-        doctorsInDept.map(async (doctor) => {
+        doctorsToCheck.map(async (doctor) => {
           try {
             const statusRes = await api.get("/appointments/queue-status", {
               params: { doctorId: doctor._id, date },
@@ -95,7 +139,6 @@ const Appointment = () => {
       consultationFee: doctor.consultationFee || 0,
     };
 
-    
     localStorage.setItem("pendingBooking", JSON.stringify(booking));
     navigate("/appointment/payment");
   }
@@ -149,6 +192,19 @@ const Appointment = () => {
           <p className="text-sm text-[#4A6B62] mb-5">
             See open slots before you call.
           </p>
+
+          {preselectedDoctor && (
+            <div className="flex items-center gap-2 bg-[#E1F5EE] border border-[#0F6E56]/20 rounded-lg px-3.5 py-2.5 mb-5">
+              <span className="text-xs font-semibold text-[#0F6E56]">
+                Booking with Dr. {preselectedDoctor.userId?.name || "Unknown"} ·{" "}
+                {preselectedDoctor.specialization}
+              </span>
+            </div>
+          )}
+
+          {loadingPreselected && (
+            <p className="text-xs text-[#4A6B62] mb-4">Loading doctor…</p>
+          )}
 
           <p className="text-xs font-semibold uppercase tracking-wide text-[#4A6B62] mb-2">
             Who is this appointment for?
@@ -219,19 +275,28 @@ const Appointment = () => {
             Department
           </label>
 
-          <select
-            value={dept}
-            onChange={(e) => setDept(e.target.value)}
-            className="w-full mb-4 rounded-lg border border-[#DDE6E2] bg-white px-3.5 py-2.5 text-sm"
-          >
-            <option value="">Select a department</option>
+          {preselectedDoctor ? (
+            // Locked once a specific doctor was chosen from their card —
+            // changing department here would no longer make sense, since
+            // it's this doctor's department, not a filter to search by.
+            <div className="w-full mb-4 rounded-lg border border-[#DDE6E2] bg-[#F0F3F2] px-3.5 py-2.5 text-sm text-[#4A6B62]">
+              {dept} <span className="text-xs">(set by selected doctor)</span>
+            </div>
+          ) : (
+            <select
+              value={dept}
+              onChange={(e) => setDept(e.target.value)}
+              className="w-full mb-4 rounded-lg border border-[#DDE6E2] bg-white px-3.5 py-2.5 text-sm"
+            >
+              <option value="">Select a department</option>
 
-            {departments.map((d) => (
-              <option key={d.name} value={d.name}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+              {departments.map((d) => (
+                <option key={d.name} value={d.name}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          )}
 
           <label className="block text-xs font-semibold uppercase tracking-wide text-[#4A6B62] mb-1.5">
             Preferred date
@@ -251,7 +316,7 @@ const Appointment = () => {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || loadingPreselected}
             className="w-full bg-[#0F6E56] text-white rounded-lg px-4 py-3 text-sm font-semibold hover:bg-[#0C5744] disabled:opacity-60"
           >
             {loading ? "Searching..." : "Search availability"}
@@ -263,7 +328,9 @@ const Appointment = () => {
       {searched && (
         <section className="max-w-6xl mx-auto px-6 pb-20">
           <h2 className="text-xl font-semibold mb-4">
-            Availability in {dept} on{" "}
+            {preselectedDoctor
+              ? `Availability for Dr. ${preselectedDoctor.userId?.name || "Unknown"} on `
+              : `Availability in ${dept} on `}
             {new Date(date).toLocaleDateString(undefined, {
               weekday: "long",
               month: "long",
@@ -282,8 +349,9 @@ const Appointment = () => {
 
           {!loading && results.length === 0 && (
             <p className="text-sm text-[#4A6B62]">
-              No doctors found in this department. Try another department or
-              date.
+              {preselectedDoctor
+                ? "This doctor's availability couldn't be checked. Please try another date."
+                : "No doctors found in this department. Try another department or date."}
             </p>
           )}
 

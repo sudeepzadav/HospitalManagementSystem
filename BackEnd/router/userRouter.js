@@ -3,7 +3,7 @@ const router = express.Router();
 
 const verifyUser = require("../middleware/auth");
 const isAdmin = require("../middleware/isAdmin");
-const uploadProfilePicture = require("../utils/multer"); // reuses your existing multer setup
+const uploadProfilePicture = require("../utils/multer"); 
 
 const {
   registerUser,
@@ -30,9 +30,7 @@ router.post("/login", loginUser);
 // Get currently logged-in user
 router.get("/me", verifyUser, getCurrentUser);
 
-// Upload / replace the logged-in user's profile picture.
-// verifyUser MUST run before the multer middleware — the upload
-// middleware's filename function reads req.user to name the file.
+
 router.post(
   "/profile-picture",
   verifyUser,

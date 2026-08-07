@@ -1,10 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
+import { useAuth } from "../context/AuthContext";
 import { SYMPTOM_KEYWORDS } from "../constant/symptommatcher";
 
 const BRAND = "#0F6E56";
 
 const AiChatboat = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([
@@ -69,7 +74,21 @@ const AiChatboat = () => {
     setStep("idle");
   };
 
+  // Not logged in — nudge them to sign in instead of starting the booking
+  // flow, and remember to send them back to the appointment flow after.
+  const requireLoginForBooking = () => {
+    addBotMessage("You'll need to log in first to book an appointment. Redirecting you to sign in…");
+    setStep("idle");
+    setOpen(false);
+    navigate("/signin", { state: { from: "/appointment" } });
+  };
+
   const startBooking = () => {
+    if (!user) {
+      addUserMessage("Book an appointment");
+      requireLoginForBooking();
+      return;
+    }
     addUserMessage("Book an appointment");
     addBotMessage("Sure — who is this appointment for? Please share their name, age, and gender.");
     setStep("patientInfo");
@@ -232,6 +251,12 @@ const AiChatboat = () => {
 
 
   const pickDoctorFromLookup = (doctor) => {
+    if (!user) {
+      addUserMessage(`Book with Dr. ${doctor.userId?.name || "Unknown"}`);
+      requireLoginForBooking();
+      return;
+    }
+
     const doctorName = doctor.userId?.name || "Unknown";
     addUserMessage(`Book with Dr. ${doctorName}`);
     setFlow((prev) => ({ ...prev, doctor, department: doctor.department }));
@@ -392,8 +417,12 @@ const AiChatboat = () => {
       const data = res.data;
 
       if (data.type === "start_booking") {
-        addBotMessage("Sure — who is this appointment for? Please share their name, age, and gender.");
-        setStep("patientInfo");
+        if (!user) {
+          requireLoginForBooking();
+        } else {
+          addBotMessage("Sure — who is this appointment for? Please share their name, age, and gender.");
+          setStep("patientInfo");
+        }
       } else if (data.type === "doctors") {
         if (!data.doctors || data.doctors.length === 0) {
           addBotMessage(
@@ -504,7 +533,7 @@ const AiChatboat = () => {
                   className="px-3 py-2 rounded-lg text-sm text-white"
                   style={{ background: BRAND }}
                 >
-                  📅 Book an appointment
+                  {user ? "📅 Book an appointment" : "🔒 Login to book an appointment"}
                 </button>
               </div>
             )}

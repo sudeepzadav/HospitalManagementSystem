@@ -1,17 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, Star, GraduationCap, Clock } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowUpRight, Star, GraduationCap, Clock, CalendarPlus } from "lucide-react";
 import api from "../api/axios";
 
-// Image paths from the backend are relative ("/uploads/doctors/x.jpg"),
-// but api's baseURL likely includes "/api" (e.g. "http://localhost:4000/api")
-// which images are NOT served under. Strip it to get the server root.
-// If your axios baseURL is set up differently, adjust this line to match.
+
 const API_ROOT = (api.defaults.baseURL || "").replace(/\/api\/?$/, "");
 
-// Doctor.availability is [{ day, startTime, endTime }] (confirmed schema).
-// Groups consecutive days that share the same hours into a single range
-// ("Sun–Fri, 09:00–17:00") instead of repeating the same time six times —
-// which is what most doctors' schedules actually look like.
 const DAY_ORDER = [
   "Sunday",
   "Monday",
@@ -30,7 +24,6 @@ const formatAvailability = (availability) => {
   const sorted = [...valid].sort((a, b) => {
     const ai = DAY_ORDER.indexOf(a.day);
     const bi = DAY_ORDER.indexOf(b.day);
-    // Unrecognized day names sort after known ones, keeping their relative order.
     if (ai === -1 && bi === -1) return 0;
     if (ai === -1) return 1;
     if (bi === -1) return -1;
@@ -68,10 +61,14 @@ const formatAvailability = (availability) => {
 };
 
 const Doctors = () => {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeFilter, setActiveFilter] = useState("All");
+  const [activeFilter, setActiveFilter] = useState(
+    searchParams.get("department") || "All"
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -97,12 +94,27 @@ const Doctors = () => {
     };
   }, []);
 
-  // Grouping by department (not specialization) — matches how the rest of
-  // the app (doctor search, appointment booking) already segments doctors.
+  // Keep the filter in sync if the department in the URL changes
+  // (e.g. clicking a different department card while already on this page).
+  useEffect(() => {
+    const fromUrl = searchParams.get("department");
+    setActiveFilter(fromUrl || "All");
+  }, [searchParams]);
+
   const departments = useMemo(
     () => ["All", ...new Set(doctors.map((d) => d.department).filter(Boolean))],
     [doctors]
   );
+
+  const handleFilterClick = (dept) => {
+    setActiveFilter(dept);
+    if (dept === "All") {
+      searchParams.delete("department");
+      setSearchParams(searchParams, { replace: true });
+    } else {
+      setSearchParams({ department: dept }, { replace: true });
+    }
+  };
 
   const visible = useMemo(
     () =>
@@ -118,9 +130,7 @@ const Doctors = () => {
       )
     : 0;
 
-  // Only average in doctors who've actually been rated — a bunch of
-  // rating: 0 (unrated, per your sample doc) would otherwise drag a real
-  // average down and make it meaningless.
+
   const ratedDoctors = doctors.filter((d) => d.rating > 0);
   const avgRating = ratedDoctors.length
     ? (ratedDoctors.reduce((sum, d) => sum + d.rating, 0) / ratedDoctors.length).toFixed(1)
@@ -129,7 +139,7 @@ const Doctors = () => {
   return (
     <div>
       {/* Doctors */}
-      <section id="doctors" className="mx-auto px-6 py-16 mt-5">
+      <section id="doctors" className="mx-auto px-6 py-16">
         {/* Header */}
         <div className="flex items-end justify-between mb-9">
           <div>
@@ -184,7 +194,7 @@ const Doctors = () => {
             {departments.map((dept) => (
               <button
                 key={dept}
-                onClick={() => setActiveFilter(dept)}
+                onClick={() => handleFilterClick(dept)}
                 className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0F6E56] ${
                   activeFilter === dept
                     ? "bg-[#0F6E56] text-white"
@@ -254,10 +264,22 @@ const Doctors = () => {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between text-xs text-[#4A6B62] pt-3 border-t border-[#EEF3F1]">
+                <div className="flex items-center justify-between text-xs text-[#4A6B62] pt-3 border-t border-[#EEF3F1] mb-4">
                   <span>{d.experience || 0} yrs experience</span>
                   <span>NPR {d.consultationFee || 0}</span>
                 </div>
+
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    navigate(`/appointment?doctorId=${d._id}`);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 text-sm font-semibold text-white rounded-lg px-3 py-2 bg-[#0F6E56] hover:bg-[#0C5744] transition-colors"
+                >
+                  <CalendarPlus size={14} />
+                  Book appointment
+                </button>
               </a>
             ))}
 

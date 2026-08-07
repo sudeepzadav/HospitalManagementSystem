@@ -8,15 +8,9 @@ import {
   FaChevronDown,
   FaBars,
   FaTimes,
-  FaCalendarAlt,
-  FaUsers,
-  FaClipboardList,
-  FaBed,
-  FaPills,
   FaCog,
   FaSignOutAlt,
   FaUserCircle,
-  FaAmbulance,
 } from "react-icons/fa";
 
 function PulseMark() {
@@ -46,8 +40,9 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [active, setActive] = useState("Dashboard");
   const profileRef = useRef(null);
+
+  const isPatient = user?.role === "patient";
 
   useEffect(() => {
     function onClick(e) {
@@ -91,8 +86,7 @@ export default function Navbar() {
       <header className="w-full bg-white fixed top-0 z-40 border-b border-[#E1E8E7] shadow-[0_1px_2px_rgba(18,42,42,0.03)]">
         <div className="mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16 gap-4">
-            {/* Brand */}
-            <div className="flex items-center gap-2.5 shrink-0 bg-blue-400 p-2 border-0 rounded-xl">
+            <div className="flex items-center gap-2.5 shrink-0">
               <PulseMark />
               <div className="leading-tight">
                 <div className="brand-font text-[16px] font-semibold tracking-tight text-[#122A2A]">
@@ -104,119 +98,134 @@ export default function Navbar() {
               </div>
             </div>
 
-            {/* Search — desktop, given room to breathe now nav links are gone */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg flex-1 max-w-sm transition-colors bg-[#F1F5F4] border border-[#E1E8E7]">
-              <FaSearch size={13} className="text-[#5B7373]" />
-              <input
-                placeholder="Search patient, MRN…"
-                className="bg-transparent outline-none text-sm w-full placeholder:text-[#8AA0A0] text-[#122A2A]"
-              />
-            </div>
+            {/* Search — desktop, patients only */}
+            {isPatient && (
+              <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg flex-1 max-w-sm transition-colors bg-[#F1F5F4] border border-[#E1E8E7]">
+                <FaSearch size={13} className="text-[#5B7373]" />
+                <input
+                  placeholder="Search patient, MRN…"
+                  className="bg-transparent outline-none text-sm w-full placeholder:text-[#8AA0A0] text-[#122A2A]"
+                />
+              </div>
+            )}
 
             {/* Right cluster */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <button
-                className="relative p-2.5 rounded-lg transition-colors text-[#5B7373] hover:bg-[#F1F5F4] focus-visible:outline-2 focus-visible:outline-[#0E6E66] focus-visible:outline-offset-2"
-                aria-label="Notifications"
-              >
-                <FaBell size={17} />
-                <span className="absolute top-2 right-2 w-2 h-2 rounded-full ring-2 ring-white bg-[#D64545]" />
-              </button>
+              {user ? (
+                <>
+                  {/* Profile */}
+                  <div className="relative" ref={profileRef}>
+                    <button
+                      className="flex items-center gap-2 pl-1.5 pr-2 py-1.5 rounded-lg transition-colors hover:bg-[#F1F5F4] focus-visible:outline-2 focus-visible:outline-[#0E6E66] focus-visible:outline-offset-2"
+                      onClick={() => setProfileOpen((v) => !v)}
+                    >
+                      {user?.profileImage ? (
+                        <img
+                          src={`http://localhost:4000${user.profileImage}`}
+                          alt={user.name || "Profile"}
+                          className="w-8 h-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold bg-[#0E6E66]">
+                          {user?.name
+                            ? user.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .toUpperCase()
+                            : ""}
+                        </div>
+                      )}
+                      <div className="hidden md:block text-left leading-tight">
+                        <div className="text-sm font-medium text-[#122A2A]">
+                          {user?.name}
+                        </div>
+                        <div className="text-[11px] text-[#5B7373]">
+                          {user?.department}
+                        </div>
+                      </div>
+                      <FaChevronDown size={11} className="text-[#5B7373]" />
+                    </button>
 
-              {/* Profile */}
-              <div className="relative" ref={profileRef}>
+                    {profileOpen && (
+                      <div className="absolute right-0 mt-2 w-48 rounded-lg py-1 bg-white shadow-lg border border-[#E1E8E7]">
+                        {[
+                          {
+                            label: "Dashboard",
+                            icon: FaUserCircle,
+                            onClick: () => {
+                              setProfileOpen(false);
+                              navigate(
+                                user?.role === "admin"
+                                  ? "/admin-dashboard"
+                                  : user?.role === "doctor"
+                                    ? "/doctor-dashboard"
+                                    : "/user-dashboard",
+                              );
+                            },
+                          },
+                          {
+                            label: "Settings",
+                            icon: FaCog,
+                            onClick: () => setProfileOpen(false),
+                          },
+                          {
+                            label: "Sign out",
+                            icon: FaSignOutAlt,
+                            onClick: handleLogout,
+                          },
+                        ].map(({ label, icon: Icon, onClick }) => (
+                          <button
+                            key={label}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors text-[#122A2A] hover:bg-[#F1F5F4]"
+                            onClick={onClick}
+                          >
+                            <Icon size={13} className="text-[#5B7373]" />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Section menu toggle — mobile only */}
+                  <button
+                    className="md:hidden p-2.5 rounded-lg transition-colors text-[#5B7373] hover:bg-[#F1F5F4] focus-visible:outline-2 focus-visible:outline-[#0E6E66] focus-visible:outline-offset-2"
+                    aria-label={menuOpen ? "Close menu" : "Open menu"}
+                    aria-expanded={menuOpen}
+                    onClick={() => setMenuOpen((v) => !v)}
+                  >
+                    {menuOpen ? <FaTimes size={17} /> : <FaBars size={17} />}
+                  </button>
+                </>
+              ) : (
                 <button
-                  className="flex items-center gap-2 pl-1.5 pr-2 py-1.5 rounded-lg transition-colors hover:bg-[#F1F5F4] focus-visible:outline-2 focus-visible:outline-[#0E6E66] focus-visible:outline-offset-2"
-                  onClick={() => setProfileOpen((v) => !v)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors bg-[#0E6E66] hover:bg-[#0B5B54] focus-visible:outline-2 focus-visible:outline-[#0E6E66] focus-visible:outline-offset-2"
+                  onClick={() => navigate("/signin")}
                 >
-                  {user?.profileImage ? (
-                    <img
-                      src={`http://localhost:4000${user.profileImage}`}
-                      alt={user.name || "Profile"}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold bg-[#0E6E66]">
-                      {user?.name
-                        ? user.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()
-                        : "U"}
-                    </div>
-                  )}
-                  <div className="hidden md:block text-left leading-tight">
-                    <div className="text-sm font-medium text-[#122A2A]">
-                      {user?.name}
-                    </div>
-                    <div className="text-[11px] text-[#5B7373]">
-                      {user?.department}
-                    </div>
-                  </div>
-                  <FaChevronDown size={11} className="text-[#5B7373]" />
+                  Login
                 </button>
-
-                {profileOpen && (
-                  <div className="absolute right-0 mt-2 w-48 rounded-lg py-1 bg-white shadow-lg border border-[#E1E8E7]">
-                    {[
-                      {
-                        label: "Dashboard",
-                        icon: FaUserCircle,
-                        onClick: () => {
-                          setProfileOpen(false);
-                          navigate(
-                            user?.role === "admin"
-                              ? "/admin-dashboard"
-                              : user?.role === "doctor"
-                              ? "/doctor-dashboard"
-                              : "/user-dashboard",
-                          );
-                        },
-                      },
-                      {
-                        label: "Settings",
-                        icon: FaCog,
-                        onClick: () => setProfileOpen(false),
-                      },
-                      {
-                        label: "Sign out",
-                        icon: FaSignOutAlt,
-                        onClick: handleLogout,
-                      },
-                    ].map(({ label, icon: Icon, onClick }) => (
-                      <button
-                        key={label}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors text-[#122A2A] hover:bg-[#F1F5F4]"
-                        onClick={onClick}
-                      >
-                        <Icon size={13} className="text-[#5B7373]" />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section menu toggle */}
+              )}
             </div>
           </div>
         </div>
 
-        {/* Section list — collapsible on every breakpoint, since it's not pinned in the bar */}
+        {/* Section list — collapsible, shown on mobile */}
         <div
           className={`menu-panel ${menuOpen ? "open" : ""} ${
             menuOpen ? "border-t border-[#E1E8E7]" : ""
           }`}
         >
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2">
-            <div className="md:hidden flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-[#F1F5F4] border border-[#E1E8E7]">
-              <FaSearch size={13} className="text-[#5B7373]" />
-              <input
-                placeholder="Search patient, MRN…"
-                className="bg-transparent outline-none text-sm w-full placeholder:text-[#8AA0A0] text-[#122A2A]"
-              />
-            </div>
+            {isPatient && (
+              <div className="md:hidden flex items-center gap-2 px-3 py-2 mb-2 rounded-lg bg-[#F1F5F4] border border-[#E1E8E7]">
+                <FaSearch size={13} className="text-[#5B7373]" />
+                <input
+                  placeholder="Search patient, MRN…"
+                  className="bg-transparent outline-none text-sm w-full placeholder:text-[#8AA0A0] text-[#122A2A]"
+                />
+              </div>
+            )}
           </div>
         </div>
       </header>
