@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { FaMapMarkerAlt, FaBriefcase, FaTimes, FaCheckCircle } from "react-icons/fa";
+import { FaMapMarkerAlt, FaBriefcase, FaTimes, FaCheckCircle, FaMoneyBillWave } from "react-icons/fa";
 import api from "../api/axios";
 
 const INK = "#122A2A";
@@ -89,6 +89,7 @@ function ApplyModal({ job, onClose }) {
             </h3>
             <p className="text-xs" style={{ color: MUTED }}>
               {job.department}
+              {job.salaryRange ? ` · ${job.salaryRange}` : ""}
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
@@ -228,6 +229,17 @@ function JobCard({ job, onApply }) {
           {job.location}
         </span>
       </div>
+
+      {job.salaryRange && (
+        <span
+          className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full w-fit"
+          style={{ background: BRAND_SOFT, color: BRAND }}
+        >
+          Salary:
+          <FaMoneyBillWave size={11} />
+          {job.salaryRange}
+        </span>
+      )}
 
       <p className="text-sm leading-relaxed line-clamp-3" style={{ color: MUTED }}>
         {job.description}
