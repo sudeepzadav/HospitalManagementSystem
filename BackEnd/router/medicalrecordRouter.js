@@ -8,7 +8,7 @@ const {
   getMedicalRecordById,
   updateMedicalRecord,
   deleteMedicalRecord
-} = require("../controller/medicalRecordController");
+} = require("../controller/medicalrecordController");
 
 
 
