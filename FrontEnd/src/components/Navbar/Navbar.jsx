@@ -121,7 +121,7 @@ export default function Navbar() {
                     >
                       {user?.profileImage ? (
                         <img
-                          src={`http://localhost:4000${user.profileImage}`}
+                          src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}${user.profileImage}`}
                           alt={user.name || "Profile"}
                           className="w-8 h-8 rounded-full object-cover"
                         />
