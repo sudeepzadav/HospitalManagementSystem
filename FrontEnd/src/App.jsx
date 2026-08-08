@@ -22,7 +22,6 @@ import DoctorDashboard from "./components/Dashboard/DoctorDashboard";
 import ProfilePage from "./components/Profile";
 import Careers from "./pages/Careers";
 
-
 function AppContent() {
   const location = useLocation();
   const { user } = useAuth();
@@ -33,9 +32,17 @@ function AppContent() {
     "/doctor/complete-profile",
   ].includes(location.pathname);
 
-  
   if (user?.role === "admin" && location.pathname !== "/admin-dashboard") {
     return <Navigate to="/admin-dashboard" replace />;
+  }
+
+  /* DOCTOR Doctor can ONLY access doctor-dashboard */ 
+  if (
+    user?.role === "doctor"
+  ) {
+    if (location.pathname !== "/doctor-dashboard") {
+      return <Navigate to="/doctor-dashboard" replace />;
+    }
   }
 
   return (

@@ -101,7 +101,7 @@ export default function Footer({
       </div>
 
       <footer className="bg-[#F5F8F6] border-t border-[#DDE6E2] px-5 pt-8 pb-5">
-        <div className="max-w-6xl mx-auto">
+        <div className="mx-auto">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.8fr_0.8fr_1fr] gap-6 pb-6">
             {/* Brand */}
             <div className="flex flex-col gap-2">

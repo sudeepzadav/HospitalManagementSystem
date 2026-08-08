@@ -80,14 +80,14 @@ export default function Home() {
       </div>
 
       {/* Doctors */}
-      <section id="doctors" className="max-w-6xl mx-auto px-6 py-16">
+      <section id="doctors" className="mx-auto px-6 py-16">
         <div className="flex items-end justify-between mb-9">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight mb-2">
               Our specialists
             </h2>
             <p className="text-sm text-[#4A6B62]">
-              Meet a few of the physicians on our team.
+              Meet a few of the doctors from our team.
             </p>
           </div>
           <button
