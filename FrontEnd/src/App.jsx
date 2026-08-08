@@ -21,6 +21,7 @@ import AdminDashboard from "./components/Dashboard/AdminDashboard";
 import DoctorDashboard from "./components/Dashboard/DoctorDashboard";
 import ProfilePage from "./components/Profile";
 import Careers from "./pages/Careers";
+import ContactUs from "./pages/ContactUs";
 
 function AppContent() {
   const location = useLocation();
@@ -71,7 +72,8 @@ function AppContent() {
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
         <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/careers" element={<Careers />} />
+        <Route path="/careers" element={<Careers />} /> 
+        <Route path="/contact-us" element={<ContactUs />} /> 
       </Routes>
 
       {!hideNavbarAndFooter && (

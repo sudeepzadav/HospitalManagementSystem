@@ -1,3 +1,5 @@
+import { href } from "react-router-dom";
+
 export const navLinks = [
   {
     id: 1,
@@ -23,5 +25,10 @@ export const navLinks = [
     id: 5,
     name: "Vacancy",
     href: "careers",
+  },
+  {
+    id: 6,
+    name: "Contact Us",
+    href: "contact-us"
   },
 ];

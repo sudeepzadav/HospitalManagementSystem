@@ -15,7 +15,7 @@ const Departments = () => {
   return (
     <div>
       {/* Departments */}
-      <section id="departments" className="max-w-6xl mx-auto px-6 py-16">
+      <section id="departments" className="mx-auto px-6 py-16">
         {/* Header */}
         <div className="flex items-end justify-between mb-9">
           <div>

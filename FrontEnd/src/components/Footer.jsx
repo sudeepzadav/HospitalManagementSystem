@@ -100,96 +100,8 @@ export default function Footer({
         for ambulance dispatch
       </div>
 
-      <footer className="bg-[#F5F8F6] border-t border-[#DDE6E2] px-5 pt-8 pb-5">
-        <div className="mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.8fr_0.8fr_1fr] gap-6 pb-6">
-            {/* Brand */}
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[#0F6E56] relative shrink-0">
-                  <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-1 bg-white" />
-                  <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-3.5 bg-white" />
-                </div>
-
-                <span className="text-lg font-semibold text-[#12312B]">
-                  {hospitalName}
-                </span>
-              </div>
-
-              <p className="text-sm leading-relaxed text-[#4A6B62] max-w-xs">
-                Full-service hospital providing trusted healthcare, advanced
-                treatments, and compassionate care since 1978.
-              </p>
-
-              <div className="flex gap-2 mt-1">
-                <span className="text-[11px] font-semibold text-[#0F6E56] bg-[#E1F5EE] rounded px-2 py-1">
-                  JCI Accredited
-                </span>
-
-                <span className="text-[11px] font-semibold text-[#0F6E56] bg-[#E1F5EE] rounded px-2 py-1">
-                  ISO 9001
-                </span>
-              </div>
-            </div>
-
-            {/* Patients */}
-            <div>
-              <h4 className="text-xs uppercase font-semibold text-[#4A6B62] mb-3">
-                Patients
-              </h4>
-
-              <ul className="space-y-1.5 text-sm text-[#12312B]">
-                {patientLinks.map((link) => (
-                  <li key={link.label}>
-                    <a href={link.href} className="hover:text-[#0F6E56]">
-                      {link.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Hospital */}
-            <div>
-              <h4 className="text-xs uppercase font-semibold text-[#4A6B62] mb-3">
-                Hospital
-              </h4>
-
-              <ul className="space-y-1.5 text-sm text-[#12312B]">
-                {hospitalLinks.map((link) => (
-                  <li key={link.label}>
-                    <a href={link.href} className="hover:text-[#0F6E56]">
-                      {link.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Contact */}
-            <div>
-              <h4 className="text-xs uppercase font-semibold text-[#4A6B62] mb-3">
-                Contact
-              </h4>
-
-              <div className="flex gap-2 text-sm text-[#4A6B62] mb-2">
-                <LocationIcon />
-                <span>{address}</span>
-              </div>
-
-              <div className="flex gap-2 text-sm text-[#4A6B62] mb-3">
-                <PhoneIcon />
-                <span>{generalNumber}</span>
-              </div>
-
-              <div className="bg-[#FBEAE6] border border-[#F0C9BE] rounded-lg px-3 py-2">
-                <p className="text-xs text-[#B3341C]">Emergency</p>
-
-                <p className="font-bold text-[#B3341C]">{emergencyNumber}</p>
-              </div>
-            </div>
-          </div>
-
+      <footer className="bg-[#F5F8F6] border-t border-[#DDE6E2] px-5">
+        <div>
           {/* Bottom */}
           <div className="border-t border-[#DDE6E2] pt-4 flex flex-wrap justify-between items-center gap-3">
             <p className="text-xs text-[#4A6B62]">
@@ -208,7 +120,7 @@ export default function Footer({
               ))}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 pb-5">
               {socialLinks.map((social) => (
                 <a
                   key={social.name}
